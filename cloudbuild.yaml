@@ -1,0 +1,28 @@
+steps:
+  - name: 'python:3.12-slim'
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -e ".[dev]" &&
+        ruff check app/ tests/ &&
+        pytest tests/ -v
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_IMAGE', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_IMAGE']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - tradingbot
+      - --image=$_IMAGE
+      - --region=europe-west1
+      - --quiet
+
+substitutions:
+  _IMAGE: 'europe-west1-docker.pkg.dev/$PROJECT_ID/tradingbot/app:$SHORT_SHA'
