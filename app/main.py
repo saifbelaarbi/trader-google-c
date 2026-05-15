@@ -57,6 +57,11 @@ def webhook():
         raw_body = request.get_data(as_text=True)
         incoming_secret = request.headers.get("X-Webhook-Secret", "")
 
+        # Fail closed: an unset secret would allow empty-header requests through
+        if not WEBHOOK_SECRET:
+            logger.error("WEBHOOK_SECRET is not configured — rejecting request")
+            return jsonify({"error": "server misconfiguration"}), 401
+
         if not hmac.compare_digest(incoming_secret, WEBHOOK_SECRET):
             logger.warning("Unauthorized webhook attempt from %s", request.remote_addr)
             return jsonify({"error": "unauthorized"}), 401

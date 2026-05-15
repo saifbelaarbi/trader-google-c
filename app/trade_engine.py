@@ -31,7 +31,12 @@ def handle_signal(payload: dict) -> dict:
     size_usdt = float(payload["size_usdt"])
     side = action
 
-    qty = round(size_usdt / price, 3)
+    # TODO: use symbol exchange filters (LOT_SIZE stepSize) for correct precision
+    qty = round(size_usdt / price, 6)
+    if qty == 0:
+        raise ValueError(
+            f"Calculated qty is 0 for size_usdt={size_usdt} price={price}; increase size_usdt"
+        )
 
     if side == "BUY":
         tp_price = round(price * (1 + tp_pct / 100), 2)
@@ -41,8 +46,9 @@ def handle_signal(payload: dict) -> dict:
         sl_price = round(price * (1 + sl_pct / 100), 2)
 
     order = broker.place_market_order(symbol, side, qty)
-    broker.set_tp_sl(symbol, side, qty, tp_price, sl_price)
 
+    # Persist immediately after the market order lands so that if set_tp_sl
+    # fails, reconciliation still sees the live position and can handle it.
     position_data = {
         "side": side,
         "entry_price": price,
@@ -53,8 +59,9 @@ def handle_signal(payload: dict) -> dict:
         "order_id": order["orderId"],
         "opened_at": datetime.utcnow().isoformat(),
     }
-
     state.save_position(symbol, position_data)
+
+    broker.set_tp_sl(symbol, side, qty, tp_price, sl_price)
     state.log_trade(
         {
             "event": "open",

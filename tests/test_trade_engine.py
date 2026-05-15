@@ -107,7 +107,7 @@ def test_close_no_existing_position_skipped(mock_deps):
     mock_broker.close_position.assert_not_called()
 
 
-def test_broker_exception_does_not_save_state(mock_deps):
+def test_place_market_order_exception_does_not_save_state(mock_deps):
     mock_broker, mock_state = mock_deps
     mock_state.get_position.return_value = None
     mock_broker.place_market_order.side_effect = RuntimeError("Binance down")
@@ -118,13 +118,25 @@ def test_broker_exception_does_not_save_state(mock_deps):
     mock_state.save_position.assert_not_called()
 
 
+def test_set_tp_sl_exception_still_has_saved_position(mock_deps):
+    mock_broker, mock_state = mock_deps
+    mock_state.get_position.return_value = None
+    mock_broker.set_tp_sl.side_effect = RuntimeError("TP/SL failed")
+
+    with pytest.raises(RuntimeError):
+        handle_signal(VALID_BUY)
+
+    # Position was persisted before set_tp_sl so reconciliation can find it
+    mock_state.save_position.assert_called_once()
+
+
 def test_buy_qty_calculation(mock_deps):
     mock_broker, mock_state = mock_deps
     mock_state.get_position.return_value = None
 
     result = handle_signal(VALID_BUY)
 
-    expected_qty = round(20.0 / 65000.0, 3)
+    expected_qty = round(20.0 / 65000.0, 6)
     assert result["qty"] == expected_qty
 
 
