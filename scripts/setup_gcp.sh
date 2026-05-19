@@ -45,17 +45,26 @@ for ROLE in roles/datastore.user roles/secretmanager.secretAccessor roles/loggin
 done
 
 echo "→ Setting up Workload Identity Federation for GitHub Actions"
-gcloud iam workload-identity-pools create "github-pool" \
-  --location="global" \
-  --display-name="GitHub Actions Pool" 2>/dev/null || echo "  Pool already exists, skipping"
+if gcloud iam workload-identity-pools describe "github-pool" --location="global" --quiet 2>/dev/null; then
+  echo "  Pool 'github-pool' already exists, skipping create"
+else
+  gcloud iam workload-identity-pools create "github-pool" \
+    --location="global" \
+    --display-name="GitHub Actions Pool"
+fi
 
-gcloud iam workload-identity-pools providers create-oidc "github-provider" \
-  --location="global" \
-  --workload-identity-pool="github-pool" \
-  --display-name="GitHub Provider" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-  --attribute-condition="assertion.repository=='${GITHUB_USER}/${REPO_NAME}'" \
-  --issuer-uri="https://token.actions.githubusercontent.com" 2>/dev/null || echo "  Provider already exists, skipping"
+if gcloud iam workload-identity-pools providers describe "github-provider" \
+    --location="global" --workload-identity-pool="github-pool" --quiet 2>/dev/null; then
+  echo "  Provider 'github-provider' already exists, skipping create"
+else
+  gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+    --location="global" \
+    --workload-identity-pool="github-pool" \
+    --display-name="GitHub Provider" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+    --attribute-condition="assertion.repository=='${GITHUB_USER}/${REPO_NAME}'" \
+    --issuer-uri="https://token.actions.githubusercontent.com"
+fi
 
 POOL_ID=$(gcloud iam workload-identity-pools describe "github-pool" \
   --location="global" --format="value(name)")
