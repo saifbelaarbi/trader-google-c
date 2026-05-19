@@ -1,0 +1,6 @@
+# Local agent dependencies — install on your PC
+# pip install -r agent/requirements.txt
+
+python-binance==1.0.19
+google-cloud-firestore==2.16.0
+python-dotenv>=1.0.0
