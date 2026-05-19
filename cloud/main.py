@@ -41,7 +41,11 @@ def _float(val) -> float | None:
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        incoming_secret = request.headers.get("X-Webhook-Secret", "")
+        # Accept secret from header (preferred) or query param (TradingView fallback)
+        incoming_secret = (
+            request.headers.get("X-Webhook-Secret")
+            or request.args.get("secret", "")
+        )
 
         if not WEBHOOK_SECRET:
             logger.error("WEBHOOK_SECRET not configured — rejecting request")

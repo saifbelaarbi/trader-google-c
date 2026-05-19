@@ -57,13 +57,23 @@ def test_valid_webhook_stored(client, mocker):
     assert stored["symbol"] == "BTCUSDT"
 
 
-def test_missing_secret_header_rejected(client):
+def test_missing_secret_rejected(client):
     r = client.post(
         "/webhook",
         data=json.dumps(VALID_PAYLOAD),
         headers={"Content-Type": "application/json"},
     )
     assert r.status_code == 401
+
+
+def test_secret_via_query_param_accepted(client, mocker):
+    mocker.patch("cloud.main._store_alert")
+    r = client.post(
+        f"/webhook?secret=testsecret",
+        data=json.dumps(VALID_PAYLOAD),
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 200
 
 
 def test_wrong_secret_rejected(client):
