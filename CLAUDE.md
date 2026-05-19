@@ -61,4 +61,4 @@ python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.2 --s
 python -m agent.executor close --symbol BTCUSDT
 ```
 
-## GCP project: strader-496414 | Region: europe-west1
+## GCP project: tradingbot-496815 | Region: europe-west1
