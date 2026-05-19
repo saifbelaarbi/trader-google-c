@@ -40,7 +40,7 @@ def place_market_order(symbol: str, side: str, qty: float) -> dict:
         symbol=symbol,
         side=binance_side,
         type=Client.ORDER_TYPE_MARKET,
-        quantity=round(qty, 6),
+        quantity=round(qty, 3),
     )
 
 
@@ -83,7 +83,7 @@ def close_position(symbol: str) -> dict | None:
         symbol=symbol,
         side=close_side,
         type=Client.ORDER_TYPE_MARKET,
-        quantity=round(abs(pos_amt), 6),
+        quantity=round(abs(pos_amt), 3),
         reduceOnly=True,
     )
 

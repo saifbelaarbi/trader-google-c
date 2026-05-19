@@ -58,7 +58,7 @@ def cmd_open(args) -> None:
         sys.exit(1)
 
     size_usdt = float(decision["size_usdt"])  # may have been capped
-    qty = round(size_usdt / price, 6)
+    qty = round(size_usdt / price, 3)
     if qty == 0:
         print(json.dumps({"error": f"Qty rounds to 0 — price={price} size={size_usdt}"}))
         sys.exit(1)

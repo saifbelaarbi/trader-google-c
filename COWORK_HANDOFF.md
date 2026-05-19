@@ -6,14 +6,14 @@
 
 ## 1. What is already done (do not redo)
 
-### GCP — project `strader-496414`
+### GCP — project `tradingbot-496815`
 
 | Resource | Status | Value |
 |----------|--------|-------|
-| GCP project | ✅ exists | `strader-496414` |
+| GCP project | ✅ exists | `tradingbot-496815` |
 | Firestore (native) | ✅ created | `europe-west1` |
-| Artifact Registry | ✅ created | `europe-west1-docker.pkg.dev/strader-496414/tradingbot/` |
-| Service account | ✅ created + IAM roles bound | `tradingbot-sa@strader-496414.iam.gserviceaccount.com` |
+| Artifact Registry | ✅ created | `europe-west1-docker.pkg.dev/tradingbot-496815/tradingbot/` |
+| Service account | ✅ created + IAM roles bound | `tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com` |
 | Workload Identity Pool | ✅ created | `github-pool` (global) |
 | WIF Provider | ✅ created | `github-provider`, bound to `saifbelaarbi/trader-google-c` |
 | Secrets | ✅ in Secret Manager | `BINANCE_API_KEY`, `BINANCE_API_SECRET`, `WEBHOOK_SECRET`, `TRADING_MODE=testnet` |
@@ -42,15 +42,15 @@ Add all three:
 
 | Secret name | Value |
 |-------------|-------|
-| `GCP_PROJECT_ID` | `strader-496414` |
-| `GCP_SA_EMAIL` | `tradingbot-sa@strader-496414.iam.gserviceaccount.com` |
+| `GCP_PROJECT_ID` | `tradingbot-496815` |
+| `GCP_SA_EMAIL` | `tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com` |
 | `WORKLOAD_IDENTITY_PROVIDER` | run command below in Cloud Shell to get it |
 
 ```bash
 gcloud iam workload-identity-pools providers describe "github-provider" \
   --location="global" \
   --workload-identity-pool="github-pool" \
-  --project="strader-496414" \
+  --project="tradingbot-496815" \
   --format="value(name)"
 ```
 
@@ -115,7 +115,7 @@ Work through this top to bottom with the owner. Check off each step.
 - [ ] GitHub Actions run succeeds (green check on `main`)
 - [ ] Get Cloud Run URL:
   ```bash
-  gcloud run services describe tradingbot --region=europe-west1 --project=strader-496414 --format="value(status.url)"
+  gcloud run services describe tradingbot --region=europe-west1 --project=tradingbot-496815 --format="value(status.url)"
   ```
 - [ ] Health check passes:
   ```bash
@@ -127,7 +127,7 @@ Work through this top to bottom with the owner. Check off each step.
 
 ```bash
 export WEBHOOK_SECRET="<value from Secret Manager>"
-# Get it: gcloud secrets versions access latest --secret=WEBHOOK_SECRET --project=strader-496414
+# Get it: gcloud secrets versions access latest --secret=WEBHOOK_SECRET --project=tradingbot-496815
 
 ./scripts/trigger_test_webhook.sh <CLOUD_RUN_URL> BUY
 # Expected: {"status": "opened", "symbol": "BTCUSDT", ...}
@@ -169,7 +169,7 @@ export WEBHOOK_SECRET="<value from Secret Manager>"
 
 - [ ] Set up Cloud Scheduler (in HOWTO.md Section 10, Option A):
   ```bash
-  gcloud services enable cloudscheduler.googleapis.com --project=strader-496414
+  gcloud services enable cloudscheduler.googleapis.com --project=tradingbot-496815
 
   gcloud scheduler jobs create http tradingbot-reconcile \
     --location=europe-west1 \
@@ -177,7 +177,7 @@ export WEBHOOK_SECRET="<value from Secret Manager>"
     --uri="<CLOUD_RUN_URL>/reconcile" \
     --http-method=GET \
     --time-zone="UTC" \
-    --project=strader-496414
+    --project=tradingbot-496815
   ```
 - [ ] Verify first scheduled run in Cloud Scheduler console
 
@@ -229,14 +229,14 @@ scripts/trigger_test_webhook.sh  ← manual test tool
 
 ```bash
 # Get Cloud Run URL
-gcloud run services describe tradingbot --region=europe-west1 --project=strader-496414 --format="value(status.url)"
+gcloud run services describe tradingbot --region=europe-west1 --project=tradingbot-496815 --format="value(status.url)"
 
 # Get webhook secret
-gcloud secrets versions access latest --secret=WEBHOOK_SECRET --project=strader-496414
+gcloud secrets versions access latest --secret=WEBHOOK_SECRET --project=tradingbot-496815
 
 # View live logs
 gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="tradingbot"' \
-  --limit=30 --format="value(jsonPayload.message)" --project=strader-496414
+  --limit=30 --format="value(jsonPayload.message)" --project=tradingbot-496815
 
 # Check open positions
 curl <CLOUD_RUN_URL>/positions
@@ -245,7 +245,7 @@ curl <CLOUD_RUN_URL>/positions
 curl <CLOUD_RUN_URL>/reconcile
 
 # Fire a test BUY
-WEBHOOK_SECRET=$(gcloud secrets versions access latest --secret=WEBHOOK_SECRET --project=strader-496414) \
+WEBHOOK_SECRET=$(gcloud secrets versions access latest --secret=WEBHOOK_SECRET --project=tradingbot-496815) \
   ./scripts/trigger_test_webhook.sh <CLOUD_RUN_URL> BUY
 ```
 
@@ -271,4 +271,4 @@ Paste this as the first message in the new Claude Code session after `cd trader-
 >
 > **Then:** Look at Section 5 (upgrades list) and tell me which ones you'd recommend implementing today based on what we saw during testing.
 >
-> GCP project: `strader-496414` | Region: `europe-west1` | Repo: `saifbelaarbi/trader-google-c`
+> GCP project: `tradingbot-496815` | Region: `europe-west1` | Repo: `saifbelaarbi/trader-google-c`
