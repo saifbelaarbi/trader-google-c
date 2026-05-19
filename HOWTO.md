@@ -32,13 +32,14 @@ Link billing: [console.cloud.google.com/billing](https://console.cloud.google.co
 # In Cloud Shell (or local gcloud)
 cd trader-google-c
 chmod +x scripts/setup_gcp.sh
-./scripts/setup_gcp.sh YOUR_PROJECT_ID
+./scripts/setup_gcp.sh YOUR_PROJECT_ID YOUR_GITHUB_USERNAME
+# Example: ./scripts/setup_gcp.sh tradingbot-123456 saifbelaarbi
 ```
 
 When prompted, paste:
-- **BINANCE_API_KEY** — from https://testnet.binancefuture.com → API Management
-- **BINANCE_API_SECRET** — same
 - **WEBHOOK_SECRET** — generate with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+
+> **Binance API keys are NOT stored in GCP.** They go in `agent/.env` on your PC (Part 3). The Cloud Run relay never calls Binance — only your local agent does.
 
 At the end the script prints three values — copy them:
 ```
