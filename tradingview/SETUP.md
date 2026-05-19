@@ -18,7 +18,10 @@ For each chart:
 2. **Condition**: TradeBot Signals → **Bar Close (send to bot)**
 3. **Trigger**: Once Per Bar Close
 4. **Alert actions**: tick **Webhook URL**
-5. **Webhook URL**: `https://<your-cloud-run-url>/webhook`
+5. **Webhook URL** — embed your secret as a query parameter (TradingView no longer shows an "Additional Headers" option on most plans):
+   ```
+   https://<your-cloud-run-url>/webhook?secret=<YOUR_WEBHOOK_SECRET>
+   ```
 6. **Message** (paste from `webhook_template.json`):
 
 ```json
@@ -35,12 +38,8 @@ For each chart:
 }
 ```
 
-7. **Advanced → Additional Headers**:
-   ```
-   X-Webhook-Secret: <your WEBHOOK_SECRET from GCP Secret Manager>
-   ```
-8. Set expiry to **Open-ended** (or as far out as TradingView allows)
-9. Click **Create**
+7. Set expiry to **Open-ended** (or as far out as TradingView allows)
+8. Click **Create**
 
 ## Step 3 — Verify
 

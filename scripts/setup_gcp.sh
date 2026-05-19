@@ -44,6 +44,12 @@ for ROLE in roles/datastore.user roles/secretmanager.secretAccessor roles/loggin
     --quiet
 done
 
+# Allow the SA to act as itself when Cloud Run uses it as a runtime SA
+gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+  --role="roles/iam.serviceAccountUser" \
+  --member="serviceAccount:$SA_EMAIL" \
+  --quiet
+
 echo "→ Setting up Workload Identity Federation for GitHub Actions"
 if gcloud iam workload-identity-pools describe "github-pool" --location="global" --quiet 2>/dev/null; then
   echo "  Pool 'github-pool' already exists, skipping create"
