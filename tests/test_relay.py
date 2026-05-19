@@ -69,7 +69,7 @@ def test_missing_secret_rejected(client):
 def test_secret_via_query_param_accepted(client, mocker):
     mocker.patch("cloud.main._store_alert")
     r = client.post(
-        f"/webhook?secret=testsecret",
+        "/webhook?secret=testsecret",
         data=json.dumps(VALID_PAYLOAD),
         headers={"Content-Type": "application/json"},
     )
