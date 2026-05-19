@@ -1,13 +1,11 @@
 [project]
 name = "tradingbot"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.11"
 dependencies = [
     "flask==3.0.3",
     "gunicorn==22.0.0",
-    "python-binance==1.0.19",
     "google-cloud-firestore==2.16.0",
-    "google-cloud-secret-manager==2.20.0",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +21,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cloud*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

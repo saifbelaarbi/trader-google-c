@@ -1,0 +1,39 @@
+//@version=5
+// TradeBot Signal Indicators
+// ─────────────────────────────────────────────────────────────────────────────
+// Add this script to BOTH your 15m and 1h charts for BTCUSDT, ETHUSDT, SOLUSDT.
+// Create ONE alert per chart with condition "Bar Close (send to bot)" and
+// set the webhook URL + message body from webhook_template.json.
+//
+// IMPORTANT: This script only stores values for the webhook.
+// Add TradingView's built-in EMA / RSI / MACD indicators for visual reference.
+// ─────────────────────────────────────────────────────────────────────────────
+
+indicator("TradeBot Signals", overlay=false, max_bars_back=500)
+
+// ─── Calculations ─────────────────────────────────────────────────────────────
+ema20    = ta.ema(close, 20)
+ema50    = ta.ema(close, 50)
+rsi14    = ta.rsi(close, 14)
+[_, _, macdHist] = ta.macd(close, 12, 26, 9)
+atr14    = ta.atr(14)
+volRatio = volume / ta.sma(volume, 20)
+
+// ─── Plots (referenced by name in webhook message body) ───────────────────────
+// display=display.none hides them from the chart pane but keeps them
+// accessible as {{plot("Name")}} in TradingView alert messages.
+plot(ema20,    title="EMA20",    display=display.none)
+plot(ema50,    title="EMA50",    display=display.none)
+plot(rsi14,    title="RSI14",    display=display.none)
+plot(macdHist, title="MACDHist", display=display.none)
+plot(atr14,    title="ATR14",    display=display.none)
+plot(volRatio, title="VolRatio", display=display.none)
+
+// ─── Alert condition — fires on every bar close ────────────────────────────────
+// In the TradingView alert dialog, select this condition and set
+// "Trigger" to "Once Per Bar Close".
+alertcondition(
+    condition = true,
+    title     = "Bar Close (send to bot)",
+    message   = "bar_close"
+)

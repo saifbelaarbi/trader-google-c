@@ -15,14 +15,12 @@ def _get_client() -> Client:
         api_key = os.environ.get("BINANCE_API_KEY", "")
         api_secret = os.environ.get("BINANCE_API_SECRET", "")
         mode = os.environ.get("TRADING_MODE", "testnet")
-
         if mode == "testnet":
-            logger.warning("⚠ RUNNING ON BINANCE TESTNET — NO REAL MONEY")
+            logger.warning("RUNNING ON BINANCE TESTNET — NO REAL MONEY")
             _client = Client(api_key, api_secret, testnet=True)
         else:
-            logger.warning("🔴 LIVE TRADING ACTIVE")
+            logger.warning("LIVE TRADING ACTIVE")
             _client = Client(api_key, api_secret)
-
     return _client
 
 
@@ -42,7 +40,7 @@ def place_market_order(symbol: str, side: str, qty: float) -> dict:
         symbol=symbol,
         side=binance_side,
         type=Client.ORDER_TYPE_MARKET,
-        quantity=round(qty, 3),
+        quantity=round(qty, 6),
     )
 
 
@@ -60,7 +58,6 @@ def set_tp_sl(
         stopPrice=round(tp_price, 2),
         closePosition=True,
     )
-
     sl_order = _call(
         client.futures_create_order,
         symbol=symbol,
@@ -69,33 +66,29 @@ def set_tp_sl(
         stopPrice=round(sl_price, 2),
         closePosition=True,
     )
-
     return tp_order, sl_order
 
 
 def close_position(symbol: str) -> dict | None:
     client = _get_client()
     positions = _call(client.futures_position_information, symbol=symbol)
-
     open_pos = next((p for p in positions if float(p["positionAmt"]) != 0), None)
     if open_pos is None:
-        logger.warning("close_position: no open position found for %s", symbol)
+        logger.warning("No open position found for %s on Binance", symbol)
         return None
-
     pos_amt = float(open_pos["positionAmt"])
     close_side = Client.SIDE_SELL if pos_amt > 0 else Client.SIDE_BUY
-
     return _call(
         client.futures_create_order,
         symbol=symbol,
         side=close_side,
         type=Client.ORDER_TYPE_MARKET,
-        quantity=round(abs(pos_amt), 3),
+        quantity=round(abs(pos_amt), 6),
         reduceOnly=True,
     )
 
 
-def get_open_positions() -> list[dict]:
-    client = _get_client()
-    all_positions = _call(client.futures_position_information)
-    return [p for p in all_positions if float(p["positionAmt"]) != 0]
+def get_account_balance() -> float:
+    account = _call(_get_client().futures_account_balance)
+    usdt = next((b for b in account if b["asset"] == "USDT"), None)
+    return float(usdt["availableBalance"]) if usdt else 0.0

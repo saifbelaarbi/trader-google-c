@@ -1,4 +1,4 @@
-name: Test and Deploy
+name: Test and Deploy Cloud Relay
 
 on:
   push:
@@ -21,10 +21,10 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run ruff
-        run: ruff check app/ tests/
+        run: ruff check cloud/ tests/
 
       - name: Run pytest
-        run: pytest tests/ -v
+        run: python3 -m pytest tests/ -v
 
   deploy:
     needs: test
@@ -69,6 +69,6 @@ jobs:
             --memory=256Mi \
             --cpu=1 \
             --timeout=30 \
-            --concurrency=1 \
+            --concurrency=10 \
             --allow-unauthenticated \
-            --set-secrets="BINANCE_API_KEY=BINANCE_API_KEY:latest,BINANCE_API_SECRET=BINANCE_API_SECRET:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest,TRADING_MODE=TRADING_MODE:latest"
+            --set-secrets="WEBHOOK_SECRET=WEBHOOK_SECRET:latest"
