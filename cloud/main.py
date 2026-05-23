@@ -40,6 +40,12 @@ def _float(val):
         return None
 
 
+def _store_alert(alert: dict) -> None:
+    from google.cloud import firestore as fs
+    alert["received_at"] = fs.SERVER_TIMESTAMP
+    _get_db().collection("alerts").add(alert)
+
+
 # ── Webhook ───────────────────────────────────────────────────────────────────
 
 @app.route("/webhook", methods=["POST"])
@@ -78,9 +84,7 @@ def webhook():
             "vol_ratio":  _float(payload.get("vol_ratio")),
         }
 
-        from google.cloud import firestore as fs
-        alert["received_at"] = fs.SERVER_TIMESTAMP
-        _get_db().collection("alerts").add(alert)
+        _store_alert(alert)
         logger.info("Alert stored: %s %s price=%.2f", symbol, timeframe, alert["price"] or 0)
 
         # Kick off auto-trade evaluation in background — webhook returns immediately
