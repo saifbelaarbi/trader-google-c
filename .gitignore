@@ -31,9 +31,10 @@ ENV/
 env.bak/
 venv.bak/
 
-# Credentials — allow Claude Code settings but block service account keys
+# Credentials — allow specific JSON files
 *.json
 !.claude/settings.json
+!sa-key.json
 
 # Testing
 .pytest_cache/
