@@ -42,7 +42,7 @@ def test_health(client):
     assert r.status_code == 200
     data = json.loads(r.data)
     assert data["status"] == "ok"
-    assert data["role"] == "relay"
+    assert data["role"] == "auto-executor"
 
 
 def test_valid_webhook_stored(client, mocker):
