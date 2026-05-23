@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m agent.report*)",
+      "Bash(python -m agent.executor*)",
+      "Bash(python -m agent.main*)",
+      "Bash(python -m agent.analytics*)",
+      "Bash(python -m agent.backtest*)",
+      "Bash(pip install*)",
+      "Bash(gcloud logging read*)",
+      "Bash(gcloud run services describe*)",
+      "Bash(gcloud secrets versions access*)",
+      "Bash(gcloud run services update*)",
+      "Bash(curl https://*.run.app*)",
+      "Bash(git status)",
+      "Bash(git log*)",
+      "Bash(git diff*)"
+    ]
+  }
+}
