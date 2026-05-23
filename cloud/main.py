@@ -95,6 +95,45 @@ def webhook():
         return jsonify({"error": "internal error"}), 500
 
 
+def _check_tp_sl(symbol: str, position: dict, price: float) -> None:
+    """Close a position if this bar's price crossed TP or SL (self-managed venues)."""
+    if price <= 0:
+        return
+    from agent import broker, state
+    from cloud import telegram
+
+    tp = float(position.get("tp", 0))
+    sl = float(position.get("sl", 0))
+    side = position.get("side", "BUY")
+    entry = float(position.get("entry_price", 0))
+    qty = float(position.get("qty", 0))
+
+    hit = None
+    if side == "BUY":
+        if tp and price >= tp:
+            hit = "TP"
+        elif sl and price <= sl:
+            hit = "SL"
+    else:  # SELL
+        if tp and price <= tp:
+            hit = "TP"
+        elif sl and price >= sl:
+            hit = "SL"
+    if not hit:
+        return
+
+    broker.close_position(symbol)
+    state.clear_position(symbol)
+    pnl = (price - entry) * qty if side == "BUY" else (entry - price) * qty
+    state.log_trade({"event": f"closed_{hit.lower()}", "symbol": symbol,
+                     "side": side, "entry_price": entry, "exit_price": price,
+                     "pnl": round(pnl, 4), "mode": TRADING_MODE})
+    emoji = "✅" if hit == "TP" else "🔴"
+    telegram.send(f"{emoji} <b>{symbol} {hit} hit</b> @ ${price:,.2f}\n"
+                  f"PnL: ${pnl:+.2f}")
+    logger.info("%s %s hit @ %s, pnl=%.4f", symbol, hit, price, pnl)
+
+
 def _evaluate_and_trade(symbol: str) -> None:
     """Runs in a background thread after each 15m bar is stored."""
     try:
@@ -104,6 +143,14 @@ def _evaluate_and_trade(symbol: str) -> None:
         alerts_1h  = state.get_recent_alerts(symbol, "60", 8)
         position   = state.get_position(symbol)
 
+        b = broker.active()
+
+        # Self-managed TP/SL: for venues without native bracket orders, check
+        # the open position against this bar's price before evaluating signals.
+        if position and not b.manages_tp_sl_natively and alerts_15m:
+            _check_tp_sl(symbol, position, float(alerts_15m[-1].get("price") or 0))
+            position = state.get_position(symbol)  # may have been closed
+
         sig    = signals.evaluate(alerts_15m, alerts_1h, position)
         action = sig.get("action", "WAIT")
 
@@ -111,6 +158,11 @@ def _evaluate_and_trade(symbol: str) -> None:
             return
 
         from cloud import telegram
+
+        # Skip shorts on long-only venues (e.g. Alpaca crypto spot)
+        if action == "OPEN_SHORT" and not b.supports_short:
+            logger.info("%s OPEN_SHORT skipped — %s is long-only", symbol, b.name)
+            return
 
         if action == "CLOSE" and position:
             broker.close_position(symbol)
@@ -167,10 +219,11 @@ def _evaluate_and_trade(symbol: str) -> None:
             "auto": True,
         }
         state.save_position(symbol, pos_data)
-        try:
-            broker.set_tp_sl(symbol, side, qty, tp_price, sl_price)
-        except Exception as exc:
-            logger.warning("set_tp_sl failed for %s: %s", symbol, exc)
+        if b.manages_tp_sl_natively:
+            try:
+                broker.set_tp_sl(symbol, side, qty, tp_price, sl_price)
+            except Exception as exc:
+                logger.warning("set_tp_sl failed for %s: %s", symbol, exc)
         state.log_trade({"event": "auto_opened", "mode": TRADING_MODE, **pos_data})
 
         telegram.notify_opened(symbol, side, price, tp_price, sl_price,
@@ -284,10 +337,7 @@ def reconcile():
             if not sym:
                 continue
             try:
-                binance_positions = broker._get_client().futures_position_information(symbol=sym)
-                open_pos = next((p for p in binance_positions
-                                 if float(p["positionAmt"]) != 0), None)
-                if open_pos is None:
+                if broker.get_open_position(sym) is None:
                     state.clear_position(sym)
                     cleared.append(sym)
                     logger.info("Reconcile: cleared ghost position %s", sym)

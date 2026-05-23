@@ -6,6 +6,7 @@ dependencies = [
     "flask==3.0.3",
     "gunicorn==22.0.0",
     "google-cloud-firestore>=2.19.0",
+    "pybit>=5.7.0",
     "python-binance==1.0.19",
     "requests>=2.31.0",
 ]

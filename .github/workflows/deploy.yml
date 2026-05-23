@@ -66,10 +66,11 @@ jobs:
             --timeout=30 \
             --concurrency=10 \
             --allow-unauthenticated \
+            --set-env-vars="BROKER=bybit" \
             --set-secrets="\
 WEBHOOK_SECRET=WEBHOOK_SECRET:latest,\
-BINANCE_API_KEY=BINANCE_API_KEY:latest,\
-BINANCE_API_SECRET=BINANCE_API_SECRET:latest,\
+BYBIT_API_KEY=BYBIT_API_KEY:latest,\
+BYBIT_API_SECRET=BYBIT_API_SECRET:latest,\
 TRADING_MODE=TRADING_MODE:latest,\
 TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,\
 TELEGRAM_CHAT_ID=TELEGRAM_CHAT_ID:latest,\
