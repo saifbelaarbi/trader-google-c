@@ -21,11 +21,33 @@ if env_file.exists():
     except ImportError:
         pass
 
+import os
+
 from agent import broker, risk, state
 from agent.config import SYMBOLS
 
+_MODE_BANNERS = {
+    "live":    "🔴  LIVE TRADING — REAL MONEY AT RISK",
+    "testnet": "🟡  TESTNET — paper money only",
+}
+
+
+def _print_mode_banner() -> None:
+    mode = os.environ.get("TRADING_MODE", "").strip().lower()
+    if not mode:
+        print("=" * 62)
+        print("⚠️   TRADING_MODE NOT SET — refusing to execute")
+        print("    Set TRADING_MODE=testnet or TRADING_MODE=live")
+        print("=" * 62)
+        sys.exit(1)
+    banner = _MODE_BANNERS.get(mode, f"MODE={mode}")
+    print("=" * 62)
+    print(f"  {banner}")
+    print("=" * 62)
+
 
 def cmd_open(args) -> None:
+    _print_mode_banner()
     symbol = args.symbol.upper()
     side = args.side.upper()
     size_usdt = float(args.size)
@@ -87,6 +109,7 @@ def cmd_open(args) -> None:
 
 
 def cmd_close(args) -> None:
+    _print_mode_banner()
     symbol = args.symbol.upper()
     position = state.get_position(symbol)
     if position is None:
