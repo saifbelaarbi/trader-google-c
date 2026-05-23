@@ -384,6 +384,46 @@ def disable_auto_trade():
     return jsonify({"auto_trade": False}), 200
 
 
+# ── State (positions + recent indicators) ────────────────────────────────────
+
+@app.route("/state", methods=["GET"])
+def state():
+    """Returns open positions + last 32 alerts per symbol for Claude sessions."""
+    try:
+        from agent import state as s
+        positions = s.get_all_positions()
+        symbols = list({p["symbol"] for p in positions}) or ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+        alerts = {}
+        for sym in symbols:
+            alerts[sym] = {
+                "15m": s.get_recent_alerts(sym, "15", 32),
+                "1h":  s.get_recent_alerts(sym, "60", 8),
+            }
+        return jsonify({
+            "positions": positions,
+            "alerts": alerts,
+            "mode": TRADING_MODE,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }), 200
+    except Exception:
+        logger.error("Error in /state:\n%s", traceback.format_exc())
+        return jsonify({"error": "internal error"}), 500
+
+
+@app.route("/indicators/<symbol>", methods=["GET"])
+def indicators(symbol):
+    """Returns last N bars of indicator data for a symbol."""
+    try:
+        from agent import state as s
+        n = int(request.args.get("n", 32))
+        tf = request.args.get("tf", "15")
+        alerts = s.get_recent_alerts(symbol.upper(), tf, n)
+        return jsonify({"symbol": symbol.upper(), "timeframe": tf, "bars": alerts}), 200
+    except Exception:
+        logger.error("Error in /indicators:\n%s", traceback.format_exc())
+        return jsonify({"error": "internal error"}), 500
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.route("/health", methods=["GET"])
