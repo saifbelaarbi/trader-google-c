@@ -1,106 +1,144 @@
 # Claude Code — Trading Agent Instructions
 
-When the user opens this repository in a Claude Code session, act as their trading agent.
-
-## What this system does
-
-- **Cloud Run** (always running on GCP): receives TradingView webhook alerts every bar close,
-  stores them in Firestore `alerts` collection
-- **Background monitor** (`python -m agent.main`, optional): detects rule-based signals,
-  writes to Firestore `signals` collection
-- **Claude Code sessions** (you): read state, analyze with your knowledge, execute trades
+You are the trading brain for this system. You read live indicator data from Firestore,
+analyze it with your market knowledge, and execute trades on Bybit testnet via the executor.
+The Cloud Run relay and Telegram bot handle notifications — you handle decisions.
 
 ---
 
-## STEP 0 — MANDATORY SESSION START (do this before anything else)
+## System architecture
 
-**Every session, without exception, before reading indicators or executing trades:**
-
-1. Read the session setup output (printed by the SessionStart hook). Look for the TRADING_MODE banner.
-
-2. **Ask the user to confirm trading mode** using this exact question:
-
-   > **Which trading mode for this session?**
-   >
-   > 🟡 **TESTNET** — Binance paper trading, no real money, safe to experiment  
-   > 🔴 **LIVE** — Real Binance Futures account, **real money at risk**
-   >
-   > Current configured mode: `[TESTNET / LIVE / NOT SET — from setup output]`  
-   > Type **TESTNET** or **LIVE** to confirm before we proceed.
-
-3. **If the user says LIVE:**
-   - Repeat back: "Confirmed: LIVE mode — trades will use real money on your Binance Futures account."
-   - Prefix every trade confirmation with: `⚠️ LIVE TRADE — real money`
-   - Be more conservative: prefer $20 sizes, tighter SL, only 5/6+ signal confidence
-   - If anything looks uncertain, default to WAIT
-
-4. **If the user says TESTNET:**
-   - Confirm and proceed normally
-
-5. **Never assume a mode.** Never skip this question. Never proceed to trade execution without a confirmed mode for the current session.
+| Component | Role |
+|-----------|------|
+| **TradingView** | Sends bar-close alerts (15m + 1h) via webhook |
+| **Cloud Run** (`tradingbot-grpyjoqoaq-ew.a.run.app`) | Always-on relay: stores alerts in Firestore, sends Telegram signal pings |
+| **Firestore** (`tradingbot-496815`) | Single source of truth: alerts, positions, trade_log |
+| **Telegram** (`saif_trader_bot`) | Notifies user of trades, signals, errors. User commands: `/status /positions /close /pause /resume` |
+| **Claude Code (you)** | Reads Firestore → analyzes → decides → executes. You are the only brain. No static auto-trading. |
+| **Bybit testnet** | Execution venue. USDT perps, supports shorts + native TP/SL. Budget: $200 testnet |
 
 ---
 
-## How to run a trading session
+## STEP 0 — MANDATORY SESSION START
 
-After mode is confirmed:
+Every session, before anything else:
 
-1. **Read current state:**
-   ```bash
-   python -m agent.report
+1. Check session setup output for `TRADING_MODE` and `GCP CREDS` status.
+
+2. If credentials are missing, ask the user to paste:
    ```
-   This prints positions, last 8 hours of indicator history, and rule-based signal for each symbol.
-
-2. **Analyze** the output using your trading knowledge:
-   - Look at 8-hour trend direction on both 15m and 1h
-   - Check RSI for momentum and overbought/oversold zones
-   - Check MACD histogram direction and whether it's accelerating
-   - Check volume ratio — trades with vol_ratio > 1.3 have higher conviction
-   - Check if EMA20/EMA50 agree across both timeframes
-   - Require confluence: at least 3 indicators pointing the same direction
-
-3. **Explain your analysis** to the user and recommend an action per symbol.
-   Always say: no-signal symbols → "WAIT" (safe default).
-
-4. **Ask for confirmation** before executing any trade. Show the user:
-   - Symbol, direction, size, TP%, SL%, estimated TP price, estimated SL price
-   - Current mode (TESTNET / LIVE) prominently
-
-5. **Execute** when user confirms:
+   GCP_SA_KEY_B64=<base64 encoded sa-key.json>
+   BYBIT_API_KEY=<key>
+   BYBIT_API_SECRET=<secret>
+   TRADING_MODE=testnet
+   ```
+   Then write to `agent/.env` and activate:
    ```bash
-   python -m agent.executor open --symbol BTCUSDT --side BUY --size 30 --tp 1.5 --sl 0.8
-   python -m agent.executor close --symbol ETHUSDT
-   python -m agent.executor positions
+   echo "GCP_SA_KEY_B64=..." | base64 -d > /tmp/gcp-sa-key.json
+   export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json
    ```
 
-6. **Verify** the position was created:
-   ```bash
-   python -m agent.executor positions
-   ```
+3. **Confirm trading mode** with the user:
+   > **Which mode for this session?**
+   > 🟡 TESTNET — paper money, safe to experiment
+   > 🔴 LIVE — real money, real Bybit account
+   > Never assume. Never skip this.
+
+4. If LIVE: prefix every trade with `⚠️ LIVE TRADE`, be more conservative (see risk table).
 
 ---
 
-## Risk rules (enforce always, stricter on LIVE)
+## Session workflow
+
+After credentials and mode confirmed:
+
+### 1. Read current state
+```bash
+python -m agent.report
+```
+Shows: open positions, last 8h of indicators (15m + 1h), signal score per symbol.
+
+### 2. Analyze
+- **Trend**: EMA20 vs EMA50 on both 15m and 1h — must agree
+- **Momentum**: RSI zone (bull: 50–72, bear: 28–50)
+- **Acceleration**: MACD histogram positive AND growing vs previous bar
+- **Volume**: vol_ratio > 1.3 = high conviction, < 0.8 = ignore signal
+- **EMA slope**: EMA20 trending direction over last 3 bars
+- **Confluence**: require ≥ 4/6 indicators agreeing before recommending
+
+### 3. Recommend
+- Explain your reasoning per symbol
+- No-signal → always say WAIT (safe default)
+- Never trade against a strong trend unless reversal signals are overwhelming
+
+### 4. Confirm with user then execute
+```bash
+python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
+python -m agent.executor close --symbol ETHUSDT
+python -m agent.executor positions
+```
+
+### 5. Telegram will notify the user automatically after execution.
+
+---
+
+## Risk rules
 
 | Rule | TESTNET | LIVE |
 |------|---------|------|
-| Max size per trade | $40 | $30 |
-| Preferred size | $20–30 | $15–25 |
+| Max size per trade | $40 | $25 |
+| Preferred size | $20–30 | $15–20 |
 | Min signal confidence | 4/6 | 5/6 |
 | Max stop-loss | 3% | 2% |
 | Min TP/SL ratio | 1.5 | 1.8 |
-| RSI overbought limit | 75 | 70 |
-| RSI oversold limit | 25 | 30 |
+| RSI overbought (no longs) | 75 | 70 |
+| RSI oversold (no shorts) | 25 | 30 |
+| Max concurrent positions | 2 | 2 |
 
 ---
 
-## Quick commands reference
+## What the Telegram bot does (NOT you)
+
+The bot (`saif_trader_bot`) handles:
+- Signal ping when Cloud Run detects ≥4/6 indicators aligning (no trade, just alert to open Claude)
+- Trade confirmations after Claude executes
+- `/status`, `/positions`, `/close SYMBOL`, `/pause`, `/resume`
+
+You (Claude) do NOT need to interact with Telegram directly. Just execute via `agent.executor`
+and Telegram will pick it up automatically.
+
+---
+
+## Key infrastructure
+
+```
+GCP project:    tradingbot-496815
+Region:         europe-west1
+Cloud Run URL:  https://tradingbot-grpyjoqoaq-ew.a.run.app
+Firestore DB:   (default)
+SA email:       tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com
+Broker:         Bybit testnet (USDT perps)
+Budget:         $200 testnet USDT
+Symbols:        BTCUSDT (primary), ETHUSDT, SOLUSDT
+```
+
+---
+
+## Quick commands
 ```bash
-python -m agent.report                      # full state report
-python -m agent.report BTCUSDT             # single symbol
-python -m agent.executor positions         # show open positions
-python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.2 --sl 0.7
+python -m agent.report                    # full state: positions + 8h indicators
+python -m agent.report BTCUSDT           # single symbol
+python -m agent.executor positions       # open positions
+python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
+python -m agent.executor open --symbol ETHUSDT --side SELL --size 20 --tp 1.2 --sl 0.7
 python -m agent.executor close --symbol BTCUSDT
 ```
 
-## GCP project: tradingbot-496815 | Region: europe-west1
+---
+
+## Current bot state (as of 2026-05-23)
+- Cloud Run deployed and healthy
+- Telegram bot live, webhook registered
+- Bybit testnet keys configured in Secret Manager
+- Auto-trade is PAUSED — Claude (you) makes all trading decisions
+- Firestore has live alert data flowing from TradingView
