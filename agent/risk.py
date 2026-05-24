@@ -31,7 +31,7 @@ def validate_decision(symbol: str, decision: dict, current_position: dict | None
             return "tp_pct and sl_pct must both be positive"
         if sl_pct > MAX_SL_PCT:
             return f"sl_pct {sl_pct:.2f} exceeds maximum {MAX_SL_PCT}"
-        if tp_pct / sl_pct < MIN_TP_SL_RATIO:
+        if round(tp_pct / sl_pct, 6) < MIN_TP_SL_RATIO:
             return (
                 f"TP/SL ratio {tp_pct / sl_pct:.2f} below minimum {MIN_TP_SL_RATIO} "
                 f"(tp={tp_pct}, sl={sl_pct})"
