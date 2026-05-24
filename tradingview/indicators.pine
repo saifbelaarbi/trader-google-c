@@ -23,8 +23,8 @@ volRatio = volume / ta.sma(volume, 20)
 stochRsiRaw = ta.stoch(rsi14, rsi14, rsi14, 14)
 stochRsiK   = ta.sma(stochRsiRaw, 3)
 
-// ADX — average directional index (trend strength)
-[adxVal, _, _] = ta.dmi(14, 14)
+// ADX — average directional index (trend strength, third return value of dmi)
+[_, _, adxVal] = ta.dmi(14, 14)
 
 // ─── Plots (referenced by name in webhook message body) ───────────────────────
 // display=display.none hides them from the chart pane but keeps them
