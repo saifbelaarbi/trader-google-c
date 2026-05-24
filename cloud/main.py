@@ -75,13 +75,15 @@ def webhook():
         alert = {
             "symbol": symbol,
             "timeframe": timeframe,
-            "price":      _float(payload.get("price")),
-            "ema20":      _float(payload.get("ema20")),
-            "ema50":      _float(payload.get("ema50")),
-            "rsi14":      _float(payload.get("rsi14")),
-            "macd_hist":  _float(payload.get("macd_hist")),
-            "atr14":      _float(payload.get("atr14")),
-            "vol_ratio":  _float(payload.get("vol_ratio")),
+            "price":       _float(payload.get("price")),
+            "ema20":       _float(payload.get("ema20")),
+            "ema50":       _float(payload.get("ema50")),
+            "rsi14":       _float(payload.get("rsi14")),
+            "macd_hist":   _float(payload.get("macd_hist")),
+            "atr14":       _float(payload.get("atr14")),
+            "vol_ratio":   _float(payload.get("vol_ratio")),
+            "stoch_rsi_k": _float(payload.get("stoch_rsi_k")),
+            "adx":         _float(payload.get("adx")),
         }
 
         _store_alert(alert)

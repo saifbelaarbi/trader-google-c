@@ -34,7 +34,9 @@ For each chart:
   "rsi14": {{plot("RSI14")}},
   "macd_hist": {{plot("MACDHist")}},
   "atr14": {{plot("ATR14")}},
-  "vol_ratio": {{plot("VolRatio")}}
+  "vol_ratio": {{plot("VolRatio")}},
+  "stoch_rsi_k": {{plot("StochRsiK")}},
+  "adx": {{plot("ADX")}}
 }
 ```
 

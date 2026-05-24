@@ -19,15 +19,24 @@ rsi14    = ta.rsi(close, 14)
 atr14    = ta.atr(14)
 volRatio = volume / ta.sma(volume, 20)
 
+// StochRSI — stochastic applied to RSI, smoothed K line
+stochRsiRaw = ta.stoch(rsi14, rsi14, rsi14, 14)
+stochRsiK   = ta.sma(stochRsiRaw, 3)
+
+// ADX — average directional index (trend strength)
+[adxVal, _, _] = ta.dmi(14, 14)
+
 // ─── Plots (referenced by name in webhook message body) ───────────────────────
 // display=display.none hides them from the chart pane but keeps them
 // accessible as {{plot("Name")}} in TradingView alert messages.
-plot(ema20,    title="EMA20",    display=display.none)
-plot(ema50,    title="EMA50",    display=display.none)
-plot(rsi14,    title="RSI14",    display=display.none)
-plot(macdHist, title="MACDHist", display=display.none)
-plot(atr14,    title="ATR14",    display=display.none)
-plot(volRatio, title="VolRatio", display=display.none)
+plot(ema20,      title="EMA20",      display=display.none)
+plot(ema50,      title="EMA50",      display=display.none)
+plot(rsi14,      title="RSI14",      display=display.none)
+plot(macdHist,   title="MACDHist",   display=display.none)
+plot(atr14,      title="ATR14",      display=display.none)
+plot(volRatio,   title="VolRatio",   display=display.none)
+plot(stochRsiK,  title="StochRsiK",  display=display.none)
+plot(adxVal,     title="ADX",        display=display.none)
 
 // ─── Alert condition — fires on every bar close ────────────────────────────────
 // In the TradingView alert dialog, select this condition and set
