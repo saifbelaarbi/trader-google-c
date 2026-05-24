@@ -18,7 +18,7 @@ if env_file.exists():
     except ImportError:
         pass
 
-from agent import signals, state
+from agent import broker as _broker_mod, signals, state
 from agent.config import HISTORY_15M, HISTORY_1H, SYMBOLS, TIMEFRAME_15M, TIMEFRAME_1H
 
 
@@ -59,10 +59,28 @@ def report(symbols: list[str]) -> None:
 
     all_positions = state.get_all_positions()
     print(f"\n  Open positions: {len(all_positions)}")
+    try:
+        b = _broker_mod.active()
+    except Exception:
+        b = None
     for p in all_positions:
+        sym = p["symbol"]
+        side = p.get("side", "BUY")
+        entry = float(p.get("entry_price") or 0)
+        qty = float(p.get("qty") or 0)
+        size = float(p.get("size_usdt") or 0)
+        pnl_str = ""
+        if b and entry and qty:
+            try:
+                now_price = b.get_price(sym)
+                pnl = (now_price - entry) * qty if side == "BUY" else (entry - now_price) * qty
+                pnl_pct = (now_price - entry) / entry * 100 if side == "BUY" else (entry - now_price) / entry * 100
+                pnl_str = f" | now=${now_price:,.2f} | P&L: ${pnl:+.2f} ({pnl_pct:+.2f}%)"
+            except Exception:
+                pass
         print(
-            f"    {p['symbol']}: {p.get('side')} | entry={p.get('entry_price')} "
-            f"tp={p.get('tp')} sl={p.get('sl')} size=${p.get('size_usdt')}"
+            f"    {sym}: {side} | entry=${entry:,.2f}"
+            f" tp={p.get('tp')} sl={p.get('sl')} size=${size}{pnl_str}"
         )
     if not all_positions:
         print("    None")
@@ -76,9 +94,9 @@ def report(symbols: list[str]) -> None:
         alerts_15m = state.get_recent_alerts(symbol, TIMEFRAME_15M, HISTORY_15M)
         alerts_1h = state.get_recent_alerts(symbol, TIMEFRAME_1H, HISTORY_1H)
 
-        print(f"\n  15m history (last 8 bars shown):")
+        print("\n  15m history (last 8 bars shown):")
         print(_fmt_table(alerts_15m, n=8))
-        print(f"\n  1h history (last 8 bars):")
+        print("\n  1h history (last 8 bars):")
         print(_fmt_table(alerts_1h, n=8))
 
         signal = signals.evaluate(alerts_15m, alerts_1h, position)

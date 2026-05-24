@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask, jsonify, request
 
@@ -137,11 +137,45 @@ def _check_tp_sl(symbol: str, position: dict, price: float) -> None:
                   f"PnL: ${pnl:+.2f}")
     logger.info("%s %s hit @ %s, pnl=%.4f", symbol, hit, price, pnl)
 
+    if hit == "SL":
+        cooldown_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+        state.set_config(symbol, {"cooldown_until": cooldown_until})
+        logger.info("Cooldown set for %s until %s", symbol, cooldown_until)
+
+
+MAX_DAILY_LOSS_USDT = -20.0
+
 
 def _evaluate_and_trade(symbol: str) -> None:
     """Runs in a background thread after each 15m bar is stored."""
     try:
         from agent import broker, risk, signals, state
+
+        # Anti-whipsaw cooldown — skip if SL was hit recently on this symbol
+        cfg = state.get_config(symbol) or {}
+        cooldown_until = cfg.get("cooldown_until")
+        if cooldown_until:
+            try:
+                until_dt = datetime.fromisoformat(cooldown_until)
+                if datetime.now(timezone.utc) < until_dt:
+                    logger.info("Cooldown active for %s until %s", symbol, cooldown_until)
+                    return
+            except ValueError:
+                pass
+
+        # Daily loss limit — pause auto-trading if today's realized losses exceed limit
+        today_pnl = state.get_today_pnl()
+        if today_pnl <= MAX_DAILY_LOSS_USDT:
+            global _auto_trade_active
+            with _auto_trade_lock:
+                _auto_trade_active = False
+            from cloud import telegram
+            telegram.send(
+                f"🛑 <b>Daily loss limit hit</b> (${today_pnl:.2f})\n"
+                f"Auto-trading paused. Send /resume to restart."
+            )
+            logger.warning("Daily loss limit hit: $%.2f — auto-trade paused", today_pnl)
+            return
 
         alerts_15m = state.get_recent_alerts(symbol, "15", 32)
         alerts_1h  = state.get_recent_alerts(symbol, "60", 8)
@@ -421,6 +455,57 @@ def indicators(symbol):
         return jsonify({"symbol": symbol.upper(), "timeframe": tf, "bars": alerts}), 200
     except Exception:
         logger.error("Error in /indicators:\n%s", traceback.format_exc())
+        return jsonify({"error": "internal error"}), 500
+
+
+# ── Daily P&L summary ─────────────────────────────────────────────────────────
+
+@app.route("/daily-summary", methods=["GET"])
+def daily_summary():
+    try:
+        from agent import state as s
+        from cloud import telegram
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        resp = __import__("requests").get(
+            "https://firestore.googleapis.com/v1/projects/tradingbot-496815"
+            "/databases/(default)/documents/trade_log",
+            headers=s._headers(), timeout=15,
+        )
+        resp.raise_for_status()
+
+        trades, wins, losses, total_pnl = 0, 0, 0, 0.0
+        for doc in resp.json().get("documents", []):
+            fields = s._dec_fields(doc.get("fields", {}))
+            ts = str(fields.get("timestamp", ""))
+            if not ts.startswith(today):
+                continue
+            event = fields.get("event", "")
+            if "opened" in event:
+                continue
+            trades += 1
+            pnl = float(fields.get("pnl") or 0)
+            total_pnl += pnl
+            if pnl >= 0:
+                wins += 1
+            else:
+                losses += 1
+
+        positions = s.get_all_positions()
+        open_syms = ", ".join(p["symbol"] for p in positions) or "none"
+        win_rate = f"{wins / trades * 100:.0f}%" if trades else "N/A"
+
+        msg = (
+            f"📊 <b>Daily — {today}</b>\n"
+            f"Trades: {trades} | Won: {wins} | Lost: {losses}\n"
+            f"Realized P&L: ${total_pnl:+.2f} | Win rate: {win_rate}\n"
+            f"Open positions: {open_syms}"
+        )
+        telegram.send(msg)
+        return jsonify({"status": "ok", "date": today, "trades": trades,
+                        "pnl": round(total_pnl, 2), "wins": wins, "losses": losses}), 200
+    except Exception:
+        logger.error("Error in /daily-summary:\n%s", traceback.format_exc())
         return jsonify({"error": "internal error"}), 500
 
 

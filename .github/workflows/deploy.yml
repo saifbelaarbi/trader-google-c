@@ -68,3 +68,62 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars="BROKER=bybit" \
             --set-secrets="WEBHOOK_SECRET=WEBHOOK_SECRET:latest,BYBIT_API_KEY=BYBIT_API_KEY:latest,BYBIT_API_SECRET=BYBIT_API_SECRET:latest,TRADING_MODE=TRADING_MODE:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_CHAT_ID=TELEGRAM_CHAT_ID:latest,AUTO_TRADE_ENABLED=AUTO_TRADE_ENABLED:latest,AUTO_TRADE_MIN_SIGNALS=AUTO_TRADE_MIN_SIGNALS:latest"
+
+      - name: Store Cloud Run URL in Firestore and update schedulers
+        run: |
+          CR_URL=$(gcloud run services describe tradingbot \
+            --region=europe-west1 \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --format='value(status.url)')
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+          # Persist URL for session startup
+          curl -sf -X PATCH \
+            "https://firestore.googleapis.com/v1/projects/${{ secrets.GCP_PROJECT_ID }}/databases/(default)/documents/config/app" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"fields\": {\"cloud_run_url\": {\"stringValue\": \"${CR_URL}\"}}}" \
+            > /dev/null
+          echo "Cloud Run URL stored in Firestore: ${CR_URL}"
+
+          # Ensure Cloud Scheduler API is enabled
+          gcloud services enable cloudscheduler.googleapis.com \
+            --project=${{ secrets.GCP_PROJECT_ID }} --quiet
+
+          # Reconcile cron — every 5 min, clears ghost positions after TP/SL hits
+          if gcloud scheduler jobs describe tradingbot-reconcile \
+               --location=europe-west1 --project=${{ secrets.GCP_PROJECT_ID }} \
+               --quiet 2>/dev/null; then
+            gcloud scheduler jobs update http tradingbot-reconcile \
+              --location=europe-west1 \
+              --uri="${CR_URL}/reconcile" \
+              --project=${{ secrets.GCP_PROJECT_ID }} --quiet
+          else
+            gcloud scheduler jobs create http tradingbot-reconcile \
+              --location=europe-west1 \
+              --schedule="*/5 * * * *" \
+              --uri="${CR_URL}/reconcile" \
+              --http-method=GET \
+              --time-zone="UTC" \
+              --project=${{ secrets.GCP_PROJECT_ID }} --quiet
+          fi
+          echo "Reconcile scheduler updated: ${CR_URL}/reconcile"
+
+          # Daily summary — 23:55 UTC sends P&L report to Telegram
+          if gcloud scheduler jobs describe tradingbot-daily-summary \
+               --location=europe-west1 --project=${{ secrets.GCP_PROJECT_ID }} \
+               --quiet 2>/dev/null; then
+            gcloud scheduler jobs update http tradingbot-daily-summary \
+              --location=europe-west1 \
+              --uri="${CR_URL}/daily-summary" \
+              --project=${{ secrets.GCP_PROJECT_ID }} --quiet
+          else
+            gcloud scheduler jobs create http tradingbot-daily-summary \
+              --location=europe-west1 \
+              --schedule="55 23 * * *" \
+              --uri="${CR_URL}/daily-summary" \
+              --http-method=GET \
+              --time-zone="UTC" \
+              --project=${{ secrets.GCP_PROJECT_ID }} --quiet
+          fi
+          echo "Daily summary scheduler updated: ${CR_URL}/daily-summary"

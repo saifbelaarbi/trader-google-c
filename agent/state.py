@@ -200,3 +200,26 @@ def log_decision(symbol: str, decision: dict) -> None:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     _add_doc("decisions", entry)
+
+
+def get_today_pnl() -> float:
+    """Sum of realized PnL logged today (UTC) from trade_log."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    resp = requests.get(f"{_BASE}/trade_log", headers=_headers(), timeout=15)
+    resp.raise_for_status()
+    total = 0.0
+    for doc in resp.json().get("documents", []):
+        fields = _dec_fields(doc.get("fields", {}))
+        ts = str(fields.get("timestamp", ""))
+        if ts.startswith(today) and fields.get("pnl") is not None:
+            total += float(fields["pnl"])
+    return total
+
+
+def get_config(key: str) -> dict | None:
+    return _get_doc("config", key)
+
+
+def set_config(key: str, data: dict) -> None:
+    existing = _get_doc("config", key) or {}
+    _set_doc("config", key, {**existing, **data})

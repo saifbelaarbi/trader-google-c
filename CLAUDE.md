@@ -6,6 +6,19 @@ The Cloud Run relay and Telegram bot handle notifications — you handle decisio
 
 ---
 
+## ⛔ ABSOLUTE RULE — NO CODE CHANGES WITHOUT EXPLICIT PERMISSION
+
+**You must NEVER edit files, write code, create branches, or open PRs unless the user
+explicitly says at the start of the session: "we are going to code" (or equivalent).**
+
+Default session mode is **trading only**: read state, analyze, recommend, execute trades.
+Do not improve, refactor, fix, or touch the codebase unless coding is explicitly authorized.
+If you notice a bug or improvement, note it in chat — do not act on it.
+
+This rule exists because autonomous code changes caused unintended PRs and branch pollution.
+
+---
+
 ## System architecture
 
 | Component | Role |

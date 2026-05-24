@@ -44,23 +44,20 @@ else
   echo ""
 fi
 
-# ── 3. Fetch live Cloud Run URL via GCP API (survives redeploys) ──────────────
+# ── 3. Fetch live Cloud Run URL from Firestore (written by deploy workflow) ───
 CLOUD_RUN_URL=$(python3 - << 'PYEOF'
-import os, json, urllib.request, urllib.error
-key_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+import json, urllib.request
 try:
     import google.auth, google.auth.transport.requests
-    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/datastore"])
     creds.refresh(google.auth.transport.requests.Request())
     project = "tradingbot-496815"
-    region  = "europe-west1"
-    service = "tradingbot"
-    url = f"https://run.googleapis.com/v1/projects/{project}/locations/{region}/services/{service}"
+    url = f"https://firestore.googleapis.com/v1/projects/{project}/databases/(default)/documents/config/app"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {creds.token}"})
     with urllib.request.urlopen(req, timeout=8) as r:
         data = json.loads(r.read())
-    print(data["status"]["url"])
-except Exception as e:
+    print(data["fields"]["cloud_run_url"]["stringValue"])
+except Exception:
     print("")
 PYEOF
 )

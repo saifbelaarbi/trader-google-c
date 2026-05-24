@@ -1,11 +1,14 @@
 """Bybit broker — USDT perpetual futures, supports shorts + native TP/SL."""
 
 import logging
+import math
 import os
 
 from agent.brokers.base import Broker
 
 logger = logging.getLogger(__name__)
+
+_qty_step_cache: dict[str, float] = {}
 
 
 class BybitBroker(Broker):
@@ -24,7 +27,21 @@ class BybitBroker(Broker):
         )
         logger.warning("Bybit broker ready (testnet=%s)", testnet)
 
+    def _qty_step(self, symbol: str) -> float:
+        if symbol not in _qty_step_cache:
+            r = self._client.get_instruments_info(category="linear", symbol=symbol)
+            lst = r["result"]["list"]
+            step = float(lst[0]["lotSizeFilter"]["qtyStep"]) if lst else 0.001
+            _qty_step_cache[symbol] = step
+        return _qty_step_cache[symbol]
+
+    def _round_qty(self, symbol: str, qty: float) -> float:
+        step = self._qty_step(symbol)
+        precision = max(0, -int(math.floor(math.log10(step))))
+        return round(round(qty / step) * step, precision)
+
     def place_market_order(self, symbol: str, side: str, qty: float) -> dict:
+        qty = self._round_qty(symbol, qty)
         r = self._client.place_order(
             category="linear", symbol=symbol,
             side="Buy" if side == "BUY" else "Sell",
