@@ -32,32 +32,27 @@ This rule exists because autonomous code changes caused unintended PRs and branc
 
 ---
 
-## STEP 0 — MANDATORY SESSION START
+## STEP 0 — SESSION START
 
-Every session, before anything else:
+Check the setup banner at the top of the session. It runs automatically.
 
-1. Check session setup output for `TRADING_MODE` and `GCP CREDS` status.
+**If you see this — everything is ready, proceed immediately to `python -m agent.report`:**
+```
+GCP CREDS    : present
+BYBIT KEYS   : present (testnet)
+CLOUD RUN    : https://...
+TRADING_MODE : TESTNET
+```
 
-2. If credentials are missing, ask the user to paste:
-   ```
-   GCP_SA_KEY_B64=<base64 encoded sa-key.json>
-   BYBIT_API_KEY=<key>
-   BYBIT_API_SECRET=<secret>
-   TRADING_MODE=testnet
-   ```
-   Then write to `agent/.env` and activate:
-   ```bash
-   echo "GCP_SA_KEY_B64=..." | base64 -d > /tmp/gcp-sa-key.json
-   export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json
-   ```
+**Only ask the user for help if the banner shows a problem:**
+- `GCP CREDS : MISSING` → ask user to set `GCP_SA_KEY_B64` env var
+- `BYBIT KEYS : MISSING` → ask user to set `BYBIT_API_KEY` + `BYBIT_API_SECRET`
+- `CLOUD RUN : NOT FOUND` → ask user to set `CLOUD_RUN_URL_OVERRIDE` to the current URL from GCP logs
 
-3. **Confirm trading mode** with the user:
-   > **Which mode for this session?**
-   > 🟡 TESTNET — paper money, safe to experiment
-   > 🔴 LIVE — real money, real Bybit account
-   > Never assume. Never skip this.
+**Never ask for credentials or trading mode if the banner shows them as present.**
+The mode is shown in the banner (🟡 TESTNET / 🔴 LIVE) — no confirmation needed.
 
-4. If LIVE: prefix every trade with `⚠️ LIVE TRADE`, be more conservative (see risk table).
+If LIVE mode: prefix every trade with `⚠️ LIVE TRADE` and apply stricter risk limits.
 
 ---
 
