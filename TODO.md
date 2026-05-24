@@ -53,6 +53,29 @@ Legend: ✅ Done · [ ] TODO
 
 ---
 
+## MANUAL SETUP — One-time Cloud Shell steps
+
+### S1 · Enable Cloud Scheduler + grant SA permissions
+The SA used by GitHub Actions can't enable APIs or create scheduler jobs.
+Run once from Cloud Shell, then deploys will manage job URLs automatically.
+
+```bash
+# Enable Cloud Scheduler API
+gcloud services enable cloudscheduler.googleapis.com --project=tradingbot-496815
+
+# Grant SA permission to manage scheduler jobs
+gcloud projects add-iam-policy-binding tradingbot-496815 \
+  --member="serviceAccount:tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com" \
+  --role="roles/cloudscheduler.admin"
+```
+
+After running the above, re-add the scheduler create/update block to `deploy.yml`
+(it was removed because it failed without this permission).
+
+**Status:** [ ] TODO — 2 min in Cloud Shell
+
+---
+
 ## MEDIUM PRIORITY — Better signals
 
 ### M1 · 4H timeframe confirmation
