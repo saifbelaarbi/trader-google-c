@@ -15,3 +15,10 @@ POLL_INTERVAL_SECONDS = 30
 MAX_SIZE_USDT = 40.0
 MAX_SL_PCT = 3.0
 MIN_TP_SL_RATIO = 1.5
+
+# Minimum order qty per symbol (Bybit step sizes)
+MIN_QTY = {
+    "BTCUSDT": 0.001,
+    "ETHUSDT": 0.01,
+    "SOLUSDT": 0.1,
+}

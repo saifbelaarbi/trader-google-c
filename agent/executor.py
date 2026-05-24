@@ -24,7 +24,7 @@ if env_file.exists():
 import os
 
 from agent import broker, risk, state
-from agent.config import SYMBOLS
+from agent.config import MIN_QTY, SYMBOLS
 
 _MODE_BANNERS = {
     "live":    "🔴  LIVE TRADING — REAL MONEY AT RISK",
@@ -80,10 +80,13 @@ def cmd_open(args) -> None:
         sys.exit(1)
 
     size_usdt = float(decision["size_usdt"])  # may have been capped
-    qty = round(size_usdt / price, 3)
-    if qty == 0:
-        print(json.dumps({"error": f"Qty rounds to 0 — price={price} size={size_usdt}"}))
+    qty = round(size_usdt / price, 6)
+    min_qty = MIN_QTY.get(symbol, 0.001)
+    if qty < min_qty:
+        need_usdt = round(min_qty * price, 2)
+        print(json.dumps({"error": f"Qty {qty} below minimum {min_qty} for {symbol} — need ~${need_usdt} to trade"}))
         sys.exit(1)
+    qty = round(qty, 3) if qty >= 0.001 else qty
 
     tp_price = round(price * (1 + tp_pct / 100), 2) if side == "BUY" else round(price * (1 - tp_pct / 100), 2)
     sl_price = round(price * (1 - sl_pct / 100), 2) if side == "BUY" else round(price * (1 + sl_pct / 100), 2)
