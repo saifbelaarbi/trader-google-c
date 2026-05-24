@@ -8,7 +8,7 @@ Improvements over v1:
 - Dynamic ATR-based position sizing scaled by signal confidence
 """
 
-from agent.config import MAX_SL_PCT, MIN_TP_SL_RATIO, MAX_SIZE_USDT
+from agent.config import MAX_SIZE_USDT
 
 
 def _safe(val, default=0.0) -> float:
@@ -74,9 +74,8 @@ def evaluate(
 
     # ── ATR-based TP/SL ───────────────────────────────────────────────────────
     sl_pct = round((atr / price) * 100, 2) if price > 0 and atr > 0 else 0.5
-    sl_pct = min(sl_pct, MAX_SL_PCT)
-    sl_pct = max(sl_pct, 0.2)
-    tp_pct = round(sl_pct * MIN_TP_SL_RATIO, 2)
+    sl_pct = max(sl_pct, 0.1)
+    tp_pct = round(sl_pct * 1.5, 2)
 
     # ── Dynamic position sizing — scales with signal confidence ───────────────
     def _dynamic_size(score: int) -> float:
