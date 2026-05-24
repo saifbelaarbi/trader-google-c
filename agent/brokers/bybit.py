@@ -49,12 +49,34 @@ class BybitBroker(Broker):
         )
         return {"orderId": r["result"]["orderId"], "symbol": symbol, "qty": qty}
 
-    def set_tp_sl(self, symbol, side, qty, tp_price, sl_price):
-        self._client.set_trading_stop(
-            category="linear", symbol=symbol,
-            takeProfit=str(tp_price), stopLoss=str(sl_price), positionIdx=0,
-        )
+    def set_tp_sl(self, symbol, side, qty, tp_price, sl_price, tp2_price=None):
+        if tp2_price is not None:
+            # M6: TP1 closes half the position; remaining half runs to trailing stop / TP2
+            half_qty = self._round_qty(symbol, qty / 2)
+            self._client.set_trading_stop(
+                category="linear", symbol=symbol,
+                takeProfit=str(tp_price), tpSize=str(half_qty),
+                stopLoss=str(sl_price),
+                tpslMode="Partial", positionIdx=0,
+            )
+        else:
+            self._client.set_trading_stop(
+                category="linear", symbol=symbol,
+                takeProfit=str(tp_price), stopLoss=str(sl_price), positionIdx=0,
+            )
         return tp_price, sl_price
+
+    def set_trailing_stop(self, symbol: str, trailing_distance: float,
+                          active_price: float | None = None):
+        kwargs: dict = {
+            "category": "linear",
+            "symbol": symbol,
+            "trailingStop": str(round(trailing_distance, 2)),
+            "positionIdx": 0,
+        }
+        if active_price is not None:
+            kwargs["activePrice"] = str(round(active_price, 2))
+        self._client.set_trading_stop(**kwargs)
 
     def close_position(self, symbol: str) -> dict | None:
         pos = self.get_open_position(symbol)

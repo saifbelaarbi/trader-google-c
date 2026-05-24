@@ -228,12 +228,14 @@ def _evaluate_and_trade(symbol: str) -> None:
         if price == 0:
             return
 
-        sl_pct   = sig["sl_pct"]
-        tp_pct   = sig["tp_pct"]
+        sl_pct    = sig["sl_pct"]
+        tp1_pct   = sig.get("tp1_pct", sig["sl_pct"])
+        tp2_pct   = sig.get("tp2_pct", round(sig["sl_pct"] * 2.0, 2))
+        trail_pct = sig.get("trail_pct", round(sig["sl_pct"] * 0.5, 2))
         size_usdt = sig.get("size_usdt", 25.0)
 
         decision = {"action": action, "size_usdt": size_usdt,
-                    "tp_pct": tp_pct, "sl_pct": sl_pct}
+                    "tp_pct": tp1_pct, "sl_pct": sl_pct}
         err = risk.validate_decision(symbol, decision, position)
         if err:
             logger.warning("Risk check blocked %s %s: %s", action, symbol, err)
@@ -245,15 +247,22 @@ def _evaluate_and_trade(symbol: str) -> None:
         if qty == 0:
             return
 
-        tp_price = round(price * (1 + tp_pct / 100), 2) if side == "BUY" \
-                   else round(price * (1 - tp_pct / 100), 2)
-        sl_price = round(price * (1 - sl_pct / 100), 2) if side == "BUY" \
-                   else round(price * (1 + sl_pct / 100), 2)
+        if side == "BUY":
+            tp1_price     = round(price * (1 + tp1_pct / 100), 2)
+            tp2_price     = round(price * (1 + tp2_pct / 100), 2)
+            sl_price      = round(price * (1 - sl_pct / 100), 2)
+            trail_active  = round(price * (1 + tp1_pct * 1.5 / 100), 2)
+        else:
+            tp1_price     = round(price * (1 - tp1_pct / 100), 2)
+            tp2_price     = round(price * (1 - tp2_pct / 100), 2)
+            sl_price      = round(price * (1 + sl_pct / 100), 2)
+            trail_active  = round(price * (1 - tp1_pct * 1.5 / 100), 2)
+        trail_distance = round(price * trail_pct / 100, 2)
 
         order = broker.place_market_order(symbol, side, qty)
         pos_data = {
             "symbol": symbol, "side": side, "entry_price": price,
-            "qty": qty, "tp": tp_price, "sl": sl_price,
+            "qty": qty, "tp": tp1_price, "tp2": tp2_price, "sl": sl_price,
             "size_usdt": size_usdt, "order_id": order.get("orderId"),
             "opened_at": datetime.now(timezone.utc).isoformat(),
             "auto": True,
@@ -261,15 +270,22 @@ def _evaluate_and_trade(symbol: str) -> None:
         state.save_position(symbol, pos_data)
         if b.manages_tp_sl_natively:
             try:
-                broker.set_tp_sl(symbol, side, qty, tp_price, sl_price)
+                broker.set_tp_sl(symbol, side, qty, tp1_price, sl_price,
+                                 tp2_price=tp2_price)
             except Exception as exc:
                 logger.warning("set_tp_sl failed for %s: %s", symbol, exc)
+            try:
+                broker.set_trailing_stop(symbol, trail_distance,
+                                         active_price=trail_active)
+            except Exception as exc:
+                logger.warning("set_trailing_stop failed for %s: %s", symbol, exc)
         state.log_trade({"event": "auto_opened", "mode": TRADING_MODE, **pos_data})
 
-        telegram.notify_opened(symbol, side, price, tp_price, sl_price,
-                               size_usdt, score, 6, TRADING_MODE)
-        logger.info("AUTO %s %s qty=%s entry=%s tp=%s sl=%s",
-                    side, symbol, qty, price, tp_price, sl_price)
+        telegram.notify_opened(symbol, side, price, tp1_price, sl_price,
+                               size_usdt, score, 8, TRADING_MODE, tp2=tp2_price)
+        logger.info("AUTO %s %s qty=%s entry=%s tp1=%s tp2=%s sl=%s trail=%s@%s",
+                    side, symbol, qty, price, tp1_price, tp2_price, sl_price,
+                    trail_distance, trail_active)
 
     except Exception:
         err = traceback.format_exc()
