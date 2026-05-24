@@ -86,10 +86,6 @@ jobs:
             > /dev/null
           echo "Cloud Run URL stored in Firestore: ${CR_URL}"
 
-          # Ensure Cloud Scheduler API is enabled
-          gcloud services enable cloudscheduler.googleapis.com \
-            --project=${{ secrets.GCP_PROJECT_ID }} --quiet
-
           # Reconcile cron — every 5 min, clears ghost positions after TP/SL hits
           if gcloud scheduler jobs describe tradingbot-reconcile \
                --location=europe-west1 --project=${{ secrets.GCP_PROJECT_ID }} \
