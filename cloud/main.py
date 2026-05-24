@@ -527,6 +527,77 @@ def daily_summary():
         return jsonify({"error": "internal error"}), 500
 
 
+
+# ── /pnl — multi-day performance stats ───────────────────────────────────────
+
+@app.route("/pnl", methods=["GET"])
+def pnl_stats():
+    try:
+        days = max(1, int(request.args.get("days", 7)))
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+        from agent import state as s
+        resp = __import__("requests").get(
+            "https://firestore.googleapis.com/v1/projects/tradingbot-496815"
+            "/databases/(default)/documents/trade_log",
+            headers=s._headers(), timeout=20,
+        )
+        resp.raise_for_status()
+
+        trades, wins, losses, total_pnl = 0, 0, 0, 0.0
+        win_pnl, loss_pnl = 0.0, 0.0
+        by_symbol: dict = {}
+
+        for doc in resp.json().get("documents", []):
+            fields = s._dec_fields(doc.get("fields", {}))
+            ts = str(fields.get("timestamp", ""))
+            if ts < cutoff:
+                continue
+            event = fields.get("event", "")
+            if "opened" in event:
+                continue
+            pnl = fields.get("pnl")
+            if pnl is None:
+                continue
+            pnl = float(pnl)
+            sym = str(fields.get("symbol", "?"))
+            trades += 1
+            total_pnl += pnl
+            if pnl > 0:
+                wins += 1
+                win_pnl += pnl
+            else:
+                losses += 1
+                loss_pnl += pnl
+            if sym not in by_symbol:
+                by_symbol[sym] = {"pnl": 0.0, "trades": 0, "wins": 0}
+            by_symbol[sym]["pnl"] = round(by_symbol[sym]["pnl"] + pnl, 4)
+            by_symbol[sym]["trades"] += 1
+            if pnl > 0:
+                by_symbol[sym]["wins"] += 1
+
+        win_rate = round(wins / trades * 100, 1) if trades else 0
+        avg_win  = round(win_pnl / wins, 4) if wins else 0
+        avg_loss = round(loss_pnl / losses, 4) if losses else 0
+        rr = round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else None
+
+        return jsonify({
+            "days": days,
+            "trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "realized": round(total_pnl, 2),
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "avg_rr": rr,
+            "by_symbol": by_symbol,
+        }), 200
+    except Exception:
+        logger.error("Error in /pnl:\n%s", traceback.format_exc())
+        return jsonify({"error": "internal error"}), 500
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.route("/health", methods=["GET"])
