@@ -31,10 +31,9 @@ ENV/
 env.bak/
 venv.bak/
 
-# Credentials — allow specific JSON files
+# Credentials — no key files in repo
 *.json
 !.claude/settings.json
-!sa-key.json
 
 # Testing
 .pytest_cache/
