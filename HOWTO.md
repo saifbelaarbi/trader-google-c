@@ -1,333 +1,287 @@
-# TradingBot — Quick Setup & Paper Trading Guide
+# TradingBot — Setup & Operations Guide
 
-Everything you need to go from zero to live paper-trading signals hitting Binance testnet. Read top-to-bottom, run each block, move on.
-
----
-
-## Prerequisites
-
-| Tool | Install |
-|------|---------|
-| `gcloud` CLI | https://cloud.google.com/sdk/docs/install |
-| `docker` | https://docs.docker.com/get-docker/ |
-| Python 3.12 | https://python.org/downloads (or `pyenv install 3.12`) |
-| A Google account | — |
-| A TradingView account (free works) | — |
+**Current stack:** TradingView → Cloud Run (relay) → Firestore → Claude Code (brain) → Bybit testnet
+**Last updated:** 2026-05-24
 
 ---
 
-## Step 1 — Create a GCP Project
+## Architecture
+
+```
+TradingView
+  └── POST /webhook (bar-close alerts, every 15m + 1h)
+         │
+         ▼
+  Cloud Run (tradingbot-grpyjoqoaq-ew.a.run.app)
+    · Validates secret · Stores alert in Firestore · Sends Telegram signal ping
+    · Auto-trade thread (OFF by default — Claude is the trader)
+         │
+         ├── Firestore (tradingbot-496815)
+         │     alerts / positions / trade_log / decisions
+         │
+         └── Telegram (saif_trader_bot)
+               · Trade notifications · /status /positions /close /pause /resume
+
+Claude Code (you, the trading brain)
+  └── python -m agent.report         → read live indicators
+  └── python -m agent.executor open  → place trade
+  └── python -m agent.executor close → close trade
+         │
+         ▼
+  Bybit testnet (USDT perpetuals)
+    · Supports longs + shorts · Native TP/SL · $200 budget
+```
+
+**Claude is the only trading brain.** Cloud Run is a relay, not an auto-trader.
+The auto-execute thread in Cloud Run exists but is OFF by default. Only enable it
+(`/resume` in Telegram) if you want fully autonomous rule-based trading.
+
+---
+
+## GCP Infrastructure (already provisioned — do not re-create)
+
+| Resource | Value |
+|----------|-------|
+| GCP project | `tradingbot-496815` |
+| Region | `europe-west1` |
+| Cloud Run URL | `https://tradingbot-grpyjoqoaq-ew.a.run.app` |
+| Firestore DB | `(default)` native mode |
+| Artifact Registry | `europe-west1-docker.pkg.dev/tradingbot-496815/tradingbot/` |
+| Service account | `tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com` |
+| SA key file | `sa-key.json` (in repo root, auto-loaded by setup-session.sh) |
+
+### Secrets in Secret Manager
+
+| Secret | Purpose |
+|--------|---------|
+| `BYBIT_API_KEY` | Bybit testnet API key |
+| `BYBIT_API_SECRET` | Bybit testnet secret |
+| `WEBHOOK_SECRET` | TradingView webhook auth (`changeme123`) |
+| `TELEGRAM_BOT_TOKEN` | Bot token |
+| `TELEGRAM_CHAT_ID` | Your chat ID |
+| `TRADING_MODE` | `testnet` or `live` |
+| `AUTO_TRADE_ENABLED` | `false` (Claude trades manually) |
+| `AUTO_TRADE_MIN_SIGNALS` | `5` |
+
+---
+
+## Starting a Claude Code session
+
+Session setup runs automatically (`.claude/setup-session.sh`):
+1. Loads SA key from `sa-key.json` → `/tmp/gcp-sa-key.json`
+2. Writes `agent/.env` with all credentials
+3. Installs Python dependencies
+4. Sends Telegram ping: "Claude trading session started"
+
+**Default credentials (testnet):**
+```
+BYBIT_API_KEY     = x28DIhmPtaPyoNhGG1
+BYBIT_API_SECRET  = 0HLHaLi5Axnlsvr3eAae8S7LWb4UAKGL9h3z
+TRADING_MODE      = testnet
+```
+
+After session starts, run:
+```bash
+python -m agent.report
+```
+
+This shows open positions, last 8h of 15m + 1h indicators, and signal scores for
+BTCUSDT, ETHUSDT, SOLUSDT.
+
+---
+
+## Day-to-day trading workflow
+
+### 1. Read state
+```bash
+python -m agent.report                # all symbols
+python -m agent.report BTCUSDT       # single symbol
+python -m agent.executor positions   # just open positions
+```
+
+### 2. Analyze (Claude does this)
+- EMA20 vs EMA50 on 15m AND 1h must agree on trend direction
+- RSI14: bull zone 50–72, bear zone 28–50
+- MACD histogram: positive AND growing (acceleration, not just positive)
+- Vol ratio: > 1.3 = high conviction, < 0.8 = skip
+- EMA slope: EMA20 trending in signal direction for last 2+ bars
+- Score: require ≥ 4/6 indicators before trading (TESTNET), ≥ 5/6 (LIVE)
+
+### 3. Execute
+```bash
+# Open long
+python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
+
+# Open short
+python -m agent.executor open --symbol ETHUSDT --side SELL --size 20 --tp 1.2 --sl 0.7
+
+# Close
+python -m agent.executor close --symbol BTCUSDT
+```
+
+Telegram notifies you automatically after execution.
+
+### Risk limits
+
+| Rule | TESTNET | LIVE |
+|------|---------|------|
+| Max size per trade | $40 | $25 |
+| Preferred size | $20–30 | $15–20 |
+| Min signal score | 4/6 | 5/6 |
+| Max stop-loss | 3% | 2% |
+| Min TP/SL ratio | 1.5 | 1.8 |
+| RSI overbought (no longs) | 75 | 70 |
+| RSI oversold (no shorts) | 25 | 30 |
+| Max concurrent positions | 2 | 2 |
+
+---
+
+## Telegram bot commands
+
+Send from Telegram to `saif_trader_bot`:
+
+| Command | Action |
+|---------|--------|
+| `/status` | Mode, auto-trade on/off, open positions count |
+| `/positions` | All open positions with entry/TP/SL |
+| `/close BTCUSDT` | Close a position immediately |
+| `/pause` | Disable auto-trading (Cloud Run thread) |
+| `/resume` | Enable auto-trading |
+| `/help` | Command list |
+
+---
+
+## Cloud Run endpoints
+
+Base URL: `https://tradingbot-grpyjoqoaq-ew.a.run.app`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Status: mode, auto_trade, min_signals |
+| POST | `/webhook` | TradingView alert ingestion (needs X-Webhook-Secret header) |
+| GET | `/state` | All positions + last 32 bars per symbol (for Claude) |
+| GET | `/indicators/BTCUSDT` | Per-symbol indicator history (`?n=32&tf=15`) |
+| GET | `/reconcile` | Clear Firestore ghost positions vs Bybit reality |
+| GET | `/positions` | Open positions list |
+| POST | `/telegram-webhook` | Telegram bot command handler |
 
 ```bash
-# Log in
-gcloud auth login
+# Quick health check
+curl https://tradingbot-grpyjoqoaq-ew.a.run.app/health
 
-# Create a new project (or skip if you have one)
-gcloud projects create tradingbot-prod --name="TradingBot"
+# Read full state (positions + indicators)
+curl https://tradingbot-grpyjoqoaq-ew.a.run.app/state | python3 -m json.tool
 
-# Set it as default
-gcloud config set project tradingbot-prod
-
-# Link billing (required for Cloud Run + Secret Manager)
-# → https://console.cloud.google.com/billing → link your project
+# Manual reconcile
+curl https://tradingbot-grpyjoqoaq-ew.a.run.app/reconcile
 ```
 
 ---
 
-## Step 2 — Get Binance Testnet API Keys
+## TradingView alert configuration
 
-1. Go to **https://testnet.binancefuture.com**
-2. Click **Sign In** (create account if needed — testnet uses its own login)
-3. Click your avatar → **API Management** → **Create API**
-4. Copy both `API Key` and `Secret Key` — you'll need them in Step 4
+### Webhook URL
+```
+https://tradingbot-grpyjoqoaq-ew.a.run.app/webhook
+```
 
-> Testnet starts you with 10,000 USDT. No real money involved.
+### Required header
+```
+X-Webhook-Secret: changeme123
+```
+
+### Alert message body (JSON)
+```json
+{
+  "symbol": "{{ticker}}",
+  "timeframe": "{{interval}}",
+  "price":     {{close}},
+  "ema20":     {{plot_0}},
+  "ema50":     {{plot_1}},
+  "rsi14":     {{plot_2}},
+  "macd_hist": {{plot_3}},
+  "atr14":     {{plot_4}},
+  "vol_ratio": {{plot_5}}
+}
+```
+
+Set up one alert per symbol per timeframe (15m and 1h each).
+`plot_0` through `plot_5` correspond to your indicator outputs — map them in TradingView.
+See `tradingview/SETUP.md` for the full Pine Script.
 
 ---
 
-## Step 3 — Clone the Repo & Generate a Webhook Secret
+## Deployment (CI/CD)
 
-```bash
-git clone https://github.com/saifbelaarbi/trader-google-c.git
-cd trader-google-c
+Every push to `main` triggers GitHub Actions:
+1. `ruff check cloud/ tests/` — lint
+2. `pytest tests/ -v` — unit tests
+3. Docker build + push to Artifact Registry
+4. `gcloud run deploy` with all secrets from Secret Manager
 
-# Generate a strong random webhook secret
-python3 -c "import secrets; print(secrets.token_hex(32))"
-# → copy the output, e.g. a3f8c2d1e4b5...
-```
-
-Keep this value — you'll use it in Step 4 AND in TradingView.
-
----
-
-## Step 4 — Run the GCP Setup Script
-
-This single script provisions everything: APIs, Firestore, Artifact Registry, service account, Workload Identity, and all secrets.
-
-```bash
-chmod +x scripts/setup_gcp.sh
-./scripts/setup_gcp.sh tradingbot-prod
-```
-
-When prompted, paste:
-- **BINANCE_API_KEY** → your testnet API key from Step 2
-- **BINANCE_API_SECRET** → your testnet secret key from Step 2
-- **WEBHOOK_SECRET** → the hex string from Step 3
-
-`TRADING_MODE` is set to `testnet` automatically by the script.
-
-At the end the script prints three values — **copy them now**:
-```
-GCP_PROJECT_ID=tradingbot-prod
-GCP_SA_EMAIL=tradingbot-sa@tradingbot-prod.iam.gserviceaccount.com
-WORKLOAD_IDENTITY_PROVIDER=projects/123.../providers/github-provider
-```
-
----
-
-## Step 5 — Add GitHub Actions Secrets
-
-In your GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**
-
-| Name | Value |
-|------|-------|
-| `GCP_PROJECT_ID` | `tradingbot-prod` |
-| `GCP_SA_EMAIL` | printed by setup script |
-| `WORKLOAD_IDENTITY_PROVIDER` | printed by setup script |
-
----
-
-## Step 6 — First Deploy
-
-Push to `main` — GitHub Actions runs tests then deploys automatically:
-
+Manual deploy:
 ```bash
 git push origin main
 ```
 
-Watch it at: **https://github.com/saifbelaarbi/trader-google-c/actions**
-
-Or deploy manually without GitHub Actions:
-
-```bash
-# Build and deploy in one command
-IMAGE="europe-west1-docker.pkg.dev/tradingbot-prod/tradingbot/app:manual"
-
-gcloud auth configure-docker europe-west1-docker.pkg.dev
-docker build -t "$IMAGE" .
-docker push "$IMAGE"
-
-gcloud run deploy tradingbot \
-  --image="$IMAGE" \
-  --region=europe-west1 \
-  --service-account=tradingbot-sa@tradingbot-prod.iam.gserviceaccount.com \
-  --min-instances=1 \
-  --max-instances=3 \
-  --memory=256Mi \
-  --cpu=1 \
-  --timeout=30 \
-  --concurrency=1 \
-  --allow-unauthenticated \
-  --set-secrets="BINANCE_API_KEY=BINANCE_API_KEY:latest,BINANCE_API_SECRET=BINANCE_API_SECRET:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest,TRADING_MODE=TRADING_MODE:latest"
-```
+Watch CI: `https://github.com/saifbelaarbi/trader-google-c/actions`
 
 ---
 
-## Step 7 — Get Your Service URL & Verify
+## GCP operations (Cloud Shell)
 
 ```bash
-# Get the deployed URL
-gcloud run services describe tradingbot \
-  --region=europe-west1 \
-  --format="value(status.url)"
-# → https://tradingbot-xxxx-ew.a.run.app
-```
+# View live Cloud Run logs
+gcloud logging read \
+  'resource.type="cloud_run_revision" resource.labels.service_name="tradingbot"' \
+  --limit=50 --format="value(jsonPayload.message)" \
+  --project=tradingbot-496815
 
-```bash
-# Verify health
-curl https://tradingbot-xxxx-ew.a.run.app/health
-# → {"mode": "testnet", "status": "ok"}
-```
+# Update a secret
+echo -n "new_value" | gcloud secrets versions add SECRET_NAME \
+  --data-file=- --project=tradingbot-496815
 
----
+# Deploy latest image manually
+gcloud run services update tradingbot --region=europe-west1 \
+  --project=tradingbot-496815
 
-## Step 8 — Configure TradingView
-
-### 8a. Set up the Webhook Alert
-
-1. Open a chart on TradingView
-2. Add your strategy or indicator (or use any built-in one to test)
-3. Click the **Alerts** clock icon → **Create Alert**
-4. Set your **Condition** (e.g. strategy fires, crossover, etc.)
-5. In **Alert actions**: tick **Webhook URL**
-6. Paste your Cloud Run URL + `/webhook`:
-   ```
-   https://tradingbot-xxxx-ew.a.run.app/webhook
-   ```
-
-### 8b. Set the Message Body
-
-Paste this in the **Message** field:
-
-```json
-{
-  "symbol": "{{ticker}}",
-  "action": "{{strategy.order.action}}",
-  "price": {{close}},
-  "tp_pct": 1.0,
-  "sl_pct": 0.5,
-  "size_usdt": 20,
-  "timeframe": "{{interval}}",
-  "strategy": "{{strategy.order.comment}}"
-}
-```
-
-> For manual alerts (not Pine Script strategies), hard-code the action: `"action": "BUY"`
-
-### 8c. Add the Auth Header
-
-In the alert dialog → **Advanced** → **Additional Headers**:
-
-```
-X-Webhook-Secret: a3f8c2d1e4b5...   ← your WEBHOOK_SECRET from Step 3
-```
-
----
-
-## Step 9 — Test It Manually
-
-Before waiting for TradingView, fire a test signal yourself:
-
-```bash
-export WEBHOOK_SECRET="a3f8c2d1e4b5..."  # your secret
-
-./scripts/trigger_test_webhook.sh https://tradingbot-xxxx-ew.a.run.app BUY
-```
-
-Expected response:
-```json
-{
-  "entry": 65000.0,
-  "qty": 0.000308,
-  "side": "BUY",
-  "sl": 64675.0,
-  "status": "opened",
-  "symbol": "BTCUSDT",
-  "tp": 65650.0
-}
-```
-
-Verify the order appeared on Binance testnet:
-→ **https://testnet.binancefuture.com** → Orders → Open Orders
-
-Check the position is recorded in Firestore:
-```bash
-curl https://tradingbot-xxxx-ew.a.run.app/positions
-# → [{"side": "BUY", "entry_price": 65000.0, ...}]
-```
-
-Send a CLOSE to clean up:
-```bash
-./scripts/trigger_test_webhook.sh https://tradingbot-xxxx-ew.a.run.app CLOSE
-```
-
----
-
-## Step 10 — Set Up Reconciliation (Cron)
-
-When a TP or SL hits on Binance, the bot doesn't receive a callback. Run reconciliation on a schedule to keep Firestore in sync.
-
-**Option A — Cloud Scheduler (recommended)**
-
-```bash
-# Enable the API
-gcloud services enable cloudscheduler.googleapis.com
-
-# Create a job that calls /reconcile every 5 minutes
+# Set up reconcile cron (run once)
 gcloud scheduler jobs create http tradingbot-reconcile \
   --location=europe-west1 \
   --schedule="*/5 * * * *" \
-  --uri="https://tradingbot-xxxx-ew.a.run.app/reconcile" \
-  --http-method=GET \
-  --time-zone="UTC"
-```
-
-**Option B — Cron on a VM**
-
-```bash
-# Add to crontab: crontab -e
-*/5 * * * * curl -s https://tradingbot-xxxx-ew.a.run.app/reconcile > /dev/null
+  --uri="https://tradingbot-grpyjoqoaq-ew.a.run.app/reconcile" \
+  --http-method=GET --time-zone="UTC" \
+  --project=tradingbot-496815
 ```
 
 ---
 
-## Day-to-Day Operations
+## Switching to live trading
 
-### View open positions
-```bash
-curl https://tradingbot-xxxx-ew.a.run.app/positions
-```
+Only when testnet is profitable for 14+ days.
 
-### View live logs
-```bash
-gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="tradingbot"' \
-  --limit=50 \
-  --format="value(jsonPayload.message)" \
-  --project=tradingbot-prod
-```
-
-### Trigger reconciliation manually
-```bash
-curl https://tradingbot-xxxx-ew.a.run.app/reconcile
-```
-
-### Check Firestore data directly
-→ https://console.cloud.google.com/firestore → `positions` collection
-
----
-
-## Risk Settings (before going live)
-
-Edit `app/risk.py` to match your strategy:
-
-```python
-MAX_SIZE_USDT = 20.0      # max $ per trade (start small)
-MAX_SL_PCT    = 1.0       # tighten stop-loss cap
-MIN_TP_SL_RATIO = 1.5     # require better R:R
-ALLOWED_SYMBOLS = ["BTCUSDT", "ETHUSDT"]  # whitelist symbols
-```
-
-After editing, commit and push → auto-redeploy.
-
----
-
-## Switching to Live Trading (when ready)
-
-1. Get **live** Binance Futures API keys from https://www.binance.com → API Management
-2. Update the secrets:
+1. Get live Bybit API keys from https://bybit.com → API Management
+2. Update secrets:
    ```bash
-   echo -n "your_live_api_key" | gcloud secrets versions add BINANCE_API_KEY --data-file=-
-   echo -n "your_live_secret"  | gcloud secrets versions add BINANCE_API_SECRET --data-file=-
-   echo -n "live"              | gcloud secrets versions add TRADING_MODE --data-file=-
+   echo -n "live_api_key" | gcloud secrets versions add BYBIT_API_KEY --data-file=- --project=tradingbot-496815
+   echo -n "live_secret"  | gcloud secrets versions add BYBIT_API_SECRET --data-file=- --project=tradingbot-496815
+   echo -n "live"         | gcloud secrets versions add TRADING_MODE --data-file=- --project=tradingbot-496815
    ```
-3. Redeploy:
-   ```bash
-   git commit --allow-empty -m "switch to live" && git push origin main
-   ```
+3. Push to main → redeploy.
 4. Verify: `curl .../health` → `{"mode": "live", ...}`
-
-> Start with `MAX_SIZE_USDT = 20` on live until you've verified everything works.
+5. Start with half position sizes. Monitor first 5 trades via Telegram.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Check |
-|---------|-------|
-| `/health` returns 503 | Cloud Run not deployed; check Actions tab |
-| 401 on webhook | Wrong `X-Webhook-Secret` header value |
-| 400 "size_usdt exceeds MAX_SIZE_USDT" | Payload `size_usdt` > 500 |
-| 400 "Calculated qty is 0" | `size_usdt` too small for `price`; increase it |
-| Order rejected by Binance | Check testnet.binancefuture.com for error; usually wrong symbol or qty precision |
-| Position stuck in Firestore after TP/SL | Run `/reconcile` — it will clear ghost positions |
-| Logs show "WEBHOOK_SECRET is not configured" | Secret not mounted; check `--set-secrets` in deploy command |
+| Symptom | Fix |
+|---------|-----|
+| `agent/report.py` shows "(no data)" for all symbols | TradingView alerts not firing. Check Pine Script is published and alerts are active. |
+| `/health` returns 503 | Cloud Run not deployed. Check GitHub Actions. |
+| 401 on webhook | Wrong `X-Webhook-Secret`. Check TradingView alert header matches secret. |
+| Position stuck in Firestore after TP/SL hit | Run `/reconcile` manually. Then set up Cloud Scheduler cron (H1 in TODO). |
+| `executor open` returns "No alert data" | No 15m bar received yet for that symbol. Wait for TradingView bar close. |
+| Telegram "notification failed (network restricted)" | Expected in Claude Code container. Cloud Run sends Telegram fine. |
+| `CERTIFICATE_VERIFY_FAILED` on Firestore | gRPC is blocked. `agent/state.py` uses REST API — should not happen. |
+| Bybit order rejected | Check qty precision. BTC needs 3dp, ETH 2dp, SOL 1dp. See TODO M5. |
