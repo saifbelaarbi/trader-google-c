@@ -29,9 +29,14 @@ class Broker(ABC):
         ...
 
     def set_tp_sl(self, symbol: str, side: str, qty: float,
-                  tp_price: float, sl_price: float):
+                  tp_price: float, sl_price: float, tp2_price: float | None = None):
         """Place TP/SL orders. Default no-op for venues that self-manage via bar checks."""
         return None, None
+
+    def set_trailing_stop(self, symbol: str, trailing_distance: float,
+                          active_price: float | None = None):
+        """Set trailing stop in price terms. Default no-op."""
+        return None
 
     def get_price(self, symbol: str) -> float:
         raise NotImplementedError

@@ -16,8 +16,14 @@ def place_market_order(symbol: str, side: str, qty: float) -> dict:
     return active().place_market_order(symbol, side, qty)
 
 
-def set_tp_sl(symbol: str, side: str, qty: float, tp_price: float, sl_price: float):
-    return active().set_tp_sl(symbol, side, qty, tp_price, sl_price)
+def set_tp_sl(symbol: str, side: str, qty: float, tp_price: float, sl_price: float,
+              tp2_price: float | None = None):
+    return active().set_tp_sl(symbol, side, qty, tp_price, sl_price, tp2_price=tp2_price)
+
+
+def set_trailing_stop(symbol: str, trailing_distance: float,
+                      active_price: float | None = None):
+    return active().set_trailing_stop(symbol, trailing_distance, active_price)
 
 
 def close_position(symbol: str):

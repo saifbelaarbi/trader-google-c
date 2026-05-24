@@ -78,9 +78,10 @@ def report(symbols: list[str]) -> None:
                 pnl_str = f" | now=${now_price:,.2f} | P&L: ${pnl:+.2f} ({pnl_pct:+.2f}%)"
             except Exception:
                 pass
+        tp2_str = f" tp2={p.get('tp2')}" if p.get("tp2") else ""
         print(
             f"    {sym}: {side} | entry=${entry:,.2f}"
-            f" tp={p.get('tp')} sl={p.get('sl')} size=${size}{pnl_str}"
+            f" tp={p.get('tp')}{tp2_str} sl={p.get('sl')} size=${size}{pnl_str}"
         )
     if not all_positions:
         print("    None")

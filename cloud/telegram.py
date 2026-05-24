@@ -24,14 +24,17 @@ def send(text: str) -> None:
 
 
 def notify_opened(symbol: str, side: str, price: float, tp: float, sl: float,
-                  size: float, score: int, total: int, mode: str) -> None:
+                  size: float, score: int, total: int, mode: str,
+                  tp2: float | None = None) -> None:
     emoji = "🟢" if side == "BUY" else "🔴"
     direction = "LONG" if side == "BUY" else "SHORT"
     mode_tag = "⚠️ LIVE" if mode == "live" else "🟡 TESTNET"
+    tp_line = f"TP1: ${tp:,.2f}  TP2: ${tp2:,.2f}  SL: ${sl:,.2f}" if tp2 else \
+              f"TP: ${tp:,.2f}    SL: ${sl:,.2f}"
     send(
         f"{emoji} <b>AUTO {direction} — {symbol}</b>  [{mode_tag}]\n"
         f"Entry: <b>${price:,.2f}</b>\n"
-        f"TP: ${tp:,.2f}    SL: ${sl:,.2f}\n"
+        f"{tp_line}\n"
         f"Size: ${size:.0f}    Signal: {score}/{total}"
     )
 

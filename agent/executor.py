@@ -85,24 +85,43 @@ def cmd_open(args) -> None:
         print(json.dumps({"error": f"Qty rounds to 0 — price={price} size={size_usdt}"}))
         sys.exit(1)
 
-    tp_price = round(price * (1 + tp_pct / 100), 2) if side == "BUY" else round(price * (1 - tp_pct / 100), 2)
-    sl_price = round(price * (1 - sl_pct / 100), 2) if side == "BUY" else round(price * (1 + sl_pct / 100), 2)
+    # M6: TP1 = user's --tp (partial close), TP2 = 2× --tp (final target)
+    # M7: trailing at 0.5×SL distance, activates at 1.5× TP1
+    tp2_pct       = round(tp_pct * 2.0, 2)
+    trail_pct     = round(sl_pct * 0.5, 2)
+    if side == "BUY":
+        tp1_price    = round(price * (1 + tp_pct / 100), 2)
+        tp2_price    = round(price * (1 + tp2_pct / 100), 2)
+        sl_price     = round(price * (1 - sl_pct / 100), 2)
+        trail_active = round(price * (1 + tp_pct * 1.5 / 100), 2)
+    else:
+        tp1_price    = round(price * (1 - tp_pct / 100), 2)
+        tp2_price    = round(price * (1 - tp2_pct / 100), 2)
+        sl_price     = round(price * (1 + sl_pct / 100), 2)
+        trail_active = round(price * (1 - tp_pct * 1.5 / 100), 2)
+    trail_distance = round(price * trail_pct / 100, 2)
 
-    print(f"Placing {side} {symbol} | size=${size_usdt} qty={qty} price≈{price} tp={tp_price} sl={sl_price}")
+    print(f"Placing {side} {symbol} | size=${size_usdt} qty={qty} price≈{price} "
+          f"tp1={tp1_price} tp2={tp2_price} sl={sl_price} trail={trail_distance}@{trail_active}")
 
     order = broker.place_market_order(symbol, side, qty)
     pos_data = {
         "symbol": symbol, "side": side, "entry_price": price,
-        "qty": qty, "tp": tp_price, "sl": sl_price, "size_usdt": size_usdt,
-        "order_id": order.get("orderId"),
+        "qty": qty, "tp": tp1_price, "tp2": tp2_price, "sl": sl_price,
+        "size_usdt": size_usdt, "order_id": order.get("orderId"),
         "opened_at": datetime.now(timezone.utc).isoformat(),
     }
     state.save_position(symbol, pos_data)
 
     try:
-        broker.set_tp_sl(symbol, side, qty, tp_price, sl_price)
+        broker.set_tp_sl(symbol, side, qty, tp1_price, sl_price, tp2_price=tp2_price)
     except Exception as e:
         print(f"Warning: set_tp_sl failed ({e}) — position saved, manage manually")
+
+    try:
+        broker.set_trailing_stop(symbol, trail_distance, active_price=trail_active)
+    except Exception as e:
+        print(f"Warning: set_trailing_stop failed ({e})")
 
     state.log_trade({"event": "opened", **pos_data})
     print(json.dumps({"status": "opened", **pos_data}))

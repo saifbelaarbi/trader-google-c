@@ -1,6 +1,6 @@
 # Trading Bot — Improvement Roadmap
 
-**Last updated:** 2026-05-24 (session 2)
+**Last updated:** 2026-05-24 (session 3)
 **Current state:** Cloud Run relay live · Bybit testnet connected · Telegram working · Claude is the trading brain
 **Broker:** Bybit USDT perpetuals (testnet). Supports longs + shorts + native TP/SL.
 
@@ -46,6 +46,12 @@ Legend: ✅ Done · [ ] TODO
 | ✅ | M5 · Bybit qty precision — fetches qtyStep per symbol, rounds correctly | `agent/brokers/bybit.py` |
 | ✅ | TP/SL hard limits removed — risk gate only enforces size cap + symbol guard | `agent/risk.py`, `agent/signals.py` |
 | ✅ | No-code rule added to CLAUDE.md — agents must not touch code without permission | `CLAUDE.md` |
+| ✅ | M2 · StochRSI + ADX — 8-point scoring, Pine Script updated, ADX bug fixed | `agent/signals.py`, `tradingview/indicators.pine` |
+| ✅ | M4 · Market regime detection — ATR/EMA50 ratio, ranging/trending thresholds | `agent/signals.py` |
+| ✅ | M6 · Partial take profit — TP1 at 1×ATR (50%), TP2 at 2×ATR, Bybit partial mode | `agent/brokers/bybit.py`, `agent/executor.py`, `cloud/main.py` |
+| ✅ | M7 · Trailing stop — 0.5×ATR trail, activates at 1.5×TP1, Bybit native | `agent/brokers/bybit.py`, `agent/brokers/base.py` |
+| ✅ | L1 · Trade analytics — `python -m agent.analytics --days 30` | `agent/analytics.py` |
+| ✅ | L4 · `/pnl` API endpoint — `GET /pnl?days=7` | `cloud/main.py` |
 
 ---
 
@@ -90,19 +96,7 @@ In `signals.evaluate()`: 4H EMA agrees → +10% size; disagrees → −30% size.
 ---
 
 ### M2 · StochRSI + ADX (Pine Script + signals)
-Add to `tradingview/indicators.pine`:
-```pine
-[stochRsiK, _] = ta.stoch(ta.rsi(close, 14), ta.rsi(close, 14), 14, 3)
-smoothK = ta.sma(stochRsiK, 3)
-[adxVal, diPlus, diMinus] = ta.dmi(14, 14)
-```
-Include `stoch_rsi_k` and `adx` in alert JSON.
-Update `cloud/main.py` to store new fields.
-Upgrade to 8-point scoring in `agent/signals.py`:
-- StochRSI K > 20 and rising → bull point
-- ADX > 25 → trending market (required for full score)
-
-**Status:** [ ] TODO
+**Status:** ✅ Done
 
 ---
 
@@ -115,54 +109,31 @@ Check in `agent/risk.py` `validate_decision()`.
 ---
 
 ### M4 · Market regime detection
-ATR(14)/EMA50 ratio for BTC on 1h:
-- > 0.015 → trending → normal
-- < 0.008 → ranging → skip non-BTC signals, reduce size 40%
-
-**File:** `agent/signals.py` `evaluate()` — add at top before scoring
-**Status:** [ ] TODO
+**Status:** ✅ Done
 
 ---
 
 ## MEDIUM PRIORITY — Money management
 
 ### M5 · Bybit qty precision per symbol
-Bybit requires symbol-specific qty rounding (BTC=0.001, ETH=0.01, SOL=0.1).
-Fetch from `get_instruments_info()` and cache per session.
-
-**File:** `agent/brokers/bybit.py` `place_market_order()` — replace `round(qty, 3)`
-**Status:** [ ] TODO
+**Status:** ✅ Done
 
 ---
 
 ### M6 · Partial take profit (scale out)
-Two TP levels instead of one:
-- TP1 at 1.0× ATR (50% of position) → close half
-- TP2 at 2.0× ATR (remaining 50%) → let it run
-
-**Files:** `agent/brokers/bybit.py`, `agent/executor.py`
-**Status:** [ ] TODO
+**Status:** ✅ Done
 
 ---
 
 ### M7 · Trailing stop loss
-After price moves 1.5× ATR in our favor, trail SL at 0.5× ATR below peak.
-Bybit supports this natively: `set_trading_stop(trailingStop=...)`.
-
-**File:** `agent/brokers/bybit.py` — add `set_trailing_stop()` method
-**Status:** [ ] TODO
+**Status:** ✅ Done
 
 ---
 
 ## LOW PRIORITY — Analytics & reliability
 
 ### L1 · Trade performance stats (`agent/analytics.py`)
-Read `trade_log` Firestore collection:
-```bash
-python -m agent.analytics --days 30
-```
-Output: total P&L, win rate, avg R:R, max drawdown, per-symbol breakdown.
-**Status:** [ ] TODO
+**Status:** ✅ Done — `python -m agent.analytics --days 30`
 
 ---
 
@@ -183,12 +154,7 @@ python -m agent.backtest --symbol BTCUSDT --from 2026-05-20
 ---
 
 ### L4 · `/pnl` API endpoint
-```
-GET /pnl?days=7
-→ { "realized": 4.25, "trades": 12, "win_rate": 0.67, "by_symbol": {...} }
-```
-**File:** `cloud/main.py`
-**Status:** [ ] TODO
+**Status:** ✅ Done — `GET /pnl?days=7`
 
 ---
 
@@ -209,27 +175,26 @@ Do only after ≥14 days of profitable testnet results (win rate > 55%, avg R:R 
 ## RECOMMENDED ORDER
 
 ```
-✅ Week 1 — DONE
-  [H1] Cloud Scheduler reconcile cron (auto in deploy)
+✅ DONE
+  [H1] Cloud Scheduler reconcile cron
   [H2] Daily loss limit
   [H3] Unrealized P&L in report
   [H4] Anti-whipsaw cooldown
   [H5] Daily P&L Telegram summary
+  [M2] StochRSI + ADX (8-point scoring)
+  [M4] Market regime detection
   [M5] Bybit qty precision
+  [M6] Partial take profit
+  [M7] Trailing stop
+  [L1] Trade analytics (agent/analytics.py)
+  [L4] /pnl API endpoint
 
-Next (week 2)
-  [M2] StochRSI + ADX                         1-2h
-  [M1] 4H timeframe confirmation              1h
-  [M3] Correlation guard                      20 min
-  [M4] Market regime detection                30 min
+Next
+  [S1] Cloud Shell: enable Cloud Scheduler + grant SA permissions  (2 min, manual)
+  [M1] 4H timeframe confirmation                                   (1h)
+  [L2] Dead man's switch (needs S1 first)                          (30 min)
+  [L3] Backtester                                                   (2-3h)
 
-Week 3
-  [M6] Partial take profit                    1h
-  [M7] Trailing stop                          30 min
-
-Week 4+
-  [L1] Trade analytics                        1-2h
-  [L3] Backtester                             2-3h
-  [L2] Dead man's switch                      30 min
-  [L4] /pnl API endpoint                     20 min
+Skipped
+  [M3] Correlation guard — not needed for now
 ```

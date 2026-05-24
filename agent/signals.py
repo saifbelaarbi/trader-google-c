@@ -106,9 +106,12 @@ def evaluate(
     min_signals = 6 if regime == "ranging" else 5
 
     # ── ATR-based TP/SL ───────────────────────────────────────────────────────
-    sl_pct = round((atr / price) * 100, 2) if price > 0 and atr > 0 else 0.5
-    sl_pct = max(sl_pct, 0.1)
-    tp_pct = round(sl_pct * 1.5, 2)
+    sl_pct    = round((atr / price) * 100, 2) if price > 0 and atr > 0 else 0.5
+    sl_pct    = max(sl_pct, 0.1)
+    tp1_pct   = round(sl_pct * 1.0, 2)   # M6: partial close at 1×ATR
+    tp2_pct   = round(sl_pct * 2.0, 2)   # M6: final target at 2×ATR
+    tp_pct    = round(sl_pct * 1.5, 2)   # legacy display field
+    trail_pct = round(sl_pct * 0.5, 2)   # M7: trailing distance (0.5×ATR)
 
     # ── Dynamic position sizing — scales with signal confidence ───────────────
     def _dynamic_size(score: int) -> float:
@@ -132,17 +135,24 @@ def evaluate(
         "ema_trend_1h":  "bull" if trend_1h  else ("bear" if trend_1h  is False else "unknown"),
         "sl_pct":        sl_pct,
         "tp_pct":        tp_pct,
+        "tp1_pct":       tp1_pct,
+        "tp2_pct":       tp2_pct,
+        "trail_pct":     trail_pct,
     }
 
     if position is None:
         if bull_count >= min_signals:
             return {"action": "OPEN_LONG",
                     "size_usdt": _dynamic_size(bull_count),
-                    "sl_pct": sl_pct, "tp_pct": tp_pct, **meta}
+                    "sl_pct": sl_pct, "tp_pct": tp_pct,
+                    "tp1_pct": tp1_pct, "tp2_pct": tp2_pct, "trail_pct": trail_pct,
+                    **meta}
         if bear_count >= min_signals:
             return {"action": "OPEN_SHORT",
                     "size_usdt": _dynamic_size(bear_count),
-                    "sl_pct": sl_pct, "tp_pct": tp_pct, **meta}
+                    "sl_pct": sl_pct, "tp_pct": tp_pct,
+                    "tp1_pct": tp1_pct, "tp2_pct": tp2_pct, "trail_pct": trail_pct,
+                    **meta}
         return {"action": "WAIT", **meta}
 
     side = position.get("side", "")
