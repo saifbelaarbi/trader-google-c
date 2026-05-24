@@ -138,10 +138,27 @@ def _check_tp_sl(symbol: str, position: dict, price: float) -> None:
     logger.info("%s %s hit @ %s, pnl=%.4f", symbol, hit, price, pnl)
 
 
+MAX_DAILY_LOSS_USDT = -20.0
+
+
 def _evaluate_and_trade(symbol: str) -> None:
     """Runs in a background thread after each 15m bar is stored."""
     try:
         from agent import broker, risk, signals, state
+
+        # Daily loss limit — pause auto-trading if today's realized losses exceed limit
+        today_pnl = state.get_today_pnl()
+        if today_pnl <= MAX_DAILY_LOSS_USDT:
+            global _auto_trade_active
+            with _auto_trade_lock:
+                _auto_trade_active = False
+            from cloud import telegram
+            telegram.send(
+                f"🛑 <b>Daily loss limit hit</b> (${today_pnl:.2f})\n"
+                f"Auto-trading paused. Send /resume to restart."
+            )
+            logger.warning("Daily loss limit hit: $%.2f — auto-trade paused", today_pnl)
+            return
 
         alerts_15m = state.get_recent_alerts(symbol, "15", 32)
         alerts_1h  = state.get_recent_alerts(symbol, "60", 8)
