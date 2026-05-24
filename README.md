@@ -1,146 +1,136 @@
 # TradingBot
 
-A production-ready TradingView webhook trading bot that receives signals from TradingView alerts, validates them against risk rules, and executes trades on Binance Futures via a Flask service hosted on Google Cloud Run. All position state is persisted in Firestore, enabling reconciliation after TP/SL hits without local memory.
+TradingView → Cloud Run → Firestore → Claude Code → Bybit testnet.
+
+Claude is the trading brain. Cloud Run is a relay. Telegram is the notification channel.
+
+---
 
 ## Architecture
 
 ```
-TradingView Alert
-      │
-      │  POST /webhook  (X-Webhook-Secret header)
-      ▼
-┌─────────────────────────────┐
-│      Google Cloud Run       │
-│  Flask + Gunicorn (1w/1t)   │
-│                             │
-│  /webhook  → trade_engine   │
-│  /reconcile → reconcile     │
-│  /positions → state         │
-│  /health                    │
-└──────────┬──────────────────┘
-           │                  │
-           ▼                  ▼
-   ┌──────────────┐   ┌──────────────────┐
-   │   Firestore  │   │ Binance Futures   │
-   │  (positions, │   │    Testnet /      │
-   │  trade_log)  │   │    Live API       │
-   └──────────────┘   └──────────────────┘
+TradingView alerts (15m + 1h bar close)
+  └── POST /webhook  (X-Webhook-Secret header)
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│  Cloud Run  (europe-west1)              │
+│  tradingbot-grpyjoqoaq-ew.a.run.app     │
+│                                         │
+│  /webhook   → store alert in Firestore  │
+│  /state     → positions + indicators    │
+│  /reconcile → sync Bybit ↔ Firestore   │
+│  /health    → liveness                  │
+│  /telegram-webhook → bot commands       │
+└──────────┬───────────────────┬──────────┘
+           │                   │
+           ▼                   ▼
+    ┌─────────────┐    ┌──────────────┐
+    │  Firestore  │    │   Telegram   │
+    │  alerts     │    │  saif_trader │
+    │  positions  │    │  _bot        │
+    │  trade_log  │    └──────────────┘
+    └──────┬──────┘
+           │ REST API (gRPC blocked in container)
+           ▼
+  Claude Code session
+    python -m agent.report    ← read live data
+    python -m agent.executor  ← place trades
+           │
+           ▼
+    ┌──────────────┐
+    │  Bybit       │
+    │  testnet     │
+    │  USDT perps  │
+    │  $200 budget │
+    └──────────────┘
 ```
 
-## TradingView Webhook Payload
+---
+
+## TradingView alert payload (what gets stored in Firestore)
 
 ```json
 {
-  "symbol":    "BTCUSDT",      // Trading pair, e.g. BTCUSDT
-  "action":    "BUY",          // BUY | SELL | CLOSE
-  "price":     65000.00,       // Entry price (current market price)
-  "tp_pct":    1.0,            // Take-profit % distance from entry
-  "sl_pct":    0.5,            // Stop-loss % distance from entry
-  "size_usdt": 20.0,           // Position size in USDT (max 500)
-  "timeframe": "5",            // Optional: chart timeframe
-  "strategy":  "my_strategy"   // Optional: strategy name for logs
+  "symbol":    "BTCUSDT",
+  "timeframe": "15",
+  "price":     65000.0,
+  "ema20":     64800.0,
+  "ema50":     64200.0,
+  "rsi14":     58.3,
+  "macd_hist": 45.2,
+  "atr14":     320.5,
+  "vol_ratio": 1.2
 }
 ```
 
-For `CLOSE` signals, only `symbol` and `action` are required.
+---
 
-## Local Development
-
-```bash
-# 1. Copy and fill in credentials
-cp .env.example .env
-
-# 2. Install dependencies
-pip install -e ".[dev]"
-
-# 3. Run Flask dev server
-flask --app app.main run
-
-# 4. Test health endpoint
-curl http://localhost:5000/health
-```
-
-For local runs without GCP, Firestore will fail on first use. Mock it or use the Firestore emulator.
-
-## Testing
+## Quick start (new session)
 
 ```bash
-pytest tests/ -v
+# State is auto-configured by .claude/setup-session.sh
+# Just run:
+python -m agent.report
+
+# Then execute trades Claude recommends:
+python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
+python -m agent.executor close --symbol BTCUSDT
+python -m agent.executor positions
 ```
 
-## GCP Setup
+---
 
-```bash
-chmod +x scripts/setup_gcp.sh
-./scripts/setup_gcp.sh <your-gcp-project-id>
+## Key files
+
+| File | Role |
+|------|------|
+| `CLAUDE.md` | Trading instructions for Claude (analysis, risk rules, commands) |
+| `HOWTO.md` | Setup guide + operations reference |
+| `TODO.md` | Roadmap — what's done, what's next |
+| `COWORK_HANDOFF.md` | Session handoff + opening prompt |
+| `cloud/main.py` | Cloud Run Flask app (webhook relay, endpoints, auto-trade thread) |
+| `cloud/telegram.py` | Telegram notification helpers |
+| `agent/state.py` | Firestore REST API layer (reads/writes alerts, positions, trade_log) |
+| `agent/signals.py` | 6-point signal engine (MACD accel, EMA slope, dynamic sizing) |
+| `agent/report.py` | Live state report — run this every session |
+| `agent/executor.py` | Trade execution tool for Claude |
+| `agent/risk.py` | Hard risk rules (size cap, TP/SL ratio, max SL%) |
+| `agent/brokers/bybit.py` | Bybit USDT perps broker |
+| `.claude/setup-session.sh` | Auto-runs at session start — loads creds, installs deps, pings Telegram |
+
+---
+
+## Cloud Run endpoints
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET | `/health` | None |
+| POST | `/webhook` | `X-Webhook-Secret` header |
+| GET | `/state` | None |
+| GET | `/indicators/<symbol>` | None |
+| GET | `/positions` | None |
+| GET | `/reconcile` | None |
+| POST | `/telegram-webhook` | Telegram verifies chat_id |
+
+---
+
+## CI/CD
+
+Push to `main` → GitHub Actions:
+1. `ruff check cloud/ tests/`
+2. `pytest tests/ -v`
+3. Docker build → Artifact Registry
+4. `gcloud run deploy tradingbot --region europe-west1`
+
+Secrets are mounted from GCP Secret Manager (not GitHub secrets).
+
+---
+
+## GCP project
+
 ```
-
-This script:
-- Enables all required GCP APIs
-- Creates Firestore database (native mode, europe-west1)
-- Creates Artifact Registry repo
-- Creates a service account with least-privilege IAM roles
-- Sets up Workload Identity Federation for GitHub Actions (no key files)
-- Creates all 4 secrets in Secret Manager
-
-## First Deploy
-
-**Via Cloud Build (manual):**
-```bash
-gcloud builds submit --project=<project-id>
+Project:  tradingbot-496815
+Region:   europe-west1
+SA:       tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com
 ```
-
-**Via GitHub Actions:** Push to `main` — CI runs tests then deploys automatically.
-
-## GitHub Actions Secrets
-
-| Secret | Description | Where to find |
-|--------|-------------|---------------|
-| `GCP_PROJECT_ID` | GCP project ID | Printed by `setup_gcp.sh` |
-| `GCP_SA_EMAIL` | Service account email | Printed by `setup_gcp.sh` |
-| `WORKLOAD_IDENTITY_PROVIDER` | WIF provider resource name | Printed by `setup_gcp.sh` |
-
-Set these at: `GitHub repo → Settings → Secrets and variables → Actions`
-
-## TradingView Configuration
-
-1. Open TradingView and create or edit an alert on your strategy/indicator
-2. In **Alert actions**, enable **Webhook URL**
-3. Set the URL to: `https://<your-cloud-run-url>/webhook`
-4. In the **Message** field, paste this template:
-   ```json
-   {
-     "symbol": "{{ticker}}",
-     "action": "{{strategy.order.action}}",
-     "price": {{close}},
-     "tp_pct": 1.0,
-     "sl_pct": 0.5,
-     "size_usdt": 20
-   }
-   ```
-5. Add a custom header: `X-Webhook-Secret: <your WEBHOOK_SECRET value>`
-   > TradingView supports custom headers under Alert → Advanced → Headers
-
-## Switching to Live Trading
-
-1. Update the `TRADING_MODE` secret in Secret Manager:
-   ```bash
-   echo -n "live" | gcloud secrets versions add TRADING_MODE --data-file=-
-   ```
-2. Update `BINANCE_API_KEY` and `BINANCE_API_SECRET` with your **live** Binance Futures API keys
-3. Redeploy:
-   ```bash
-   gcloud builds submit --project=<project-id>
-   ```
-   or push to `main`.
-
-> **Warning:** Always test with paper trading first. Use small `size_usdt` values initially.
-
-## HTTP Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/webhook` | Receive TradingView signal; requires `X-Webhook-Secret` header |
-| `GET` | `/health` | Liveness check; returns `{"status":"ok","mode":"testnet"}` |
-| `GET` | `/reconcile` | Sync Firestore positions against live Binance state |
-| `GET` | `/positions` | List all currently open positions from Firestore |
