@@ -46,9 +46,14 @@ CLOUD SESSION: yes — analysis + reporting only
 ```
 
 **`CLOUD SESSION: yes` means you are running in the Anthropic cloud environment.**
-In this mode: read Firestore, run reports, analyze signals, recommend trades.
-Do NOT attempt `python -m agent.executor` — Bybit execution runs from the user's local CLI.
-When you recommend a trade, give the exact command for the user to run locally.
+Bybit's API is blocked here (TLS proxy). In this mode: read Firestore, run reports, analyze
+signals, and recommend trades — but do NOT run `python -m agent.executor`.
+Tell the user to start a **local Claude Code session** for execution, or give them the exact
+command to paste in their terminal.
+
+**If `CLOUD SESSION` is not set or is `false`** — you are running locally with full network
+access. Analyze AND execute: run `python -m agent.report`, make the decision, then run
+`python -m agent.executor` directly. No need to ask the user to run commands themselves.
 
 **Only ask the user for help if the banner shows:**
 - `GCP CREDS : MISSING` → ask user to set `GCP_SA_KEY_B64` env var
@@ -142,14 +147,14 @@ Symbols:        BTCUSDT (primary), ETHUSDT, SOLUSDT
 
 ## Quick commands
 
-**Works in cloud session (analysis):**
+**Analysis (works in both cloud and local sessions):**
 ```bash
 python -m agent.report                    # full state: positions + 8h indicators
 python -m agent.report BTCUSDT           # single symbol
 python -m agent.analytics --days 30      # trade performance stats
 ```
 
-**Run locally (user's terminal) for execution:**
+**Execution (local session only — Bybit blocked in cloud):**
 ```bash
 python -m agent.executor positions
 python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
