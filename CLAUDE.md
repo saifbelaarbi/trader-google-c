@@ -36,23 +36,31 @@ This rule exists because autonomous code changes caused unintended PRs and branc
 
 Check the setup banner at the top of the session. It runs automatically.
 
-**If you see this — everything is ready, proceed immediately to `python -m agent.report`:**
+**If you see this — proceed immediately to `python -m agent.report`. No questions needed.**
 ```
 GCP CREDS    : present
 BYBIT KEYS   : present (testnet)
 CLOUD RUN    : https://...
 TRADING_MODE : TESTNET
+CLOUD SESSION: yes — analysis + reporting only
 ```
 
-**Only ask the user for help if the banner shows a problem:**
+**`CLOUD SESSION: yes` means you are running in the Anthropic cloud environment.**
+In this mode: read Firestore, run reports, analyze signals, recommend trades.
+Do NOT attempt `python -m agent.executor` — Bybit execution runs from the user's local CLI.
+When you recommend a trade, give the exact command for the user to run locally.
+
+**Only ask the user for help if the banner shows:**
 - `GCP CREDS : MISSING` → ask user to set `GCP_SA_KEY_B64` env var
 - `BYBIT KEYS : MISSING` → ask user to set `BYBIT_API_KEY` + `BYBIT_API_SECRET`
-- `CLOUD RUN : NOT FOUND` → ask user to set `CLOUD_RUN_URL_OVERRIDE` to the current URL from GCP logs
+
+**`CLOUD RUN : NOT FOUND` or any Cloud Run URL issue is NOT a problem** — you never call
+the Cloud Run URL yourself. It's only used by TradingView webhooks. Ignore it entirely.
 
 **Never ask for credentials or trading mode if the banner shows them as present.**
 The mode is shown in the banner (🟡 TESTNET / 🔴 LIVE) — no confirmation needed.
 
-If LIVE mode: prefix every trade with `⚠️ LIVE TRADE` and apply stricter risk limits.
+If LIVE mode: prefix every trade recommendation with `⚠️ LIVE TRADE` and apply stricter risk limits.
 
 ---
 
@@ -133,10 +141,17 @@ Symbols:        BTCUSDT (primary), ETHUSDT, SOLUSDT
 ---
 
 ## Quick commands
+
+**Works in cloud session (analysis):**
 ```bash
 python -m agent.report                    # full state: positions + 8h indicators
 python -m agent.report BTCUSDT           # single symbol
-python -m agent.executor positions       # open positions
+python -m agent.analytics --days 30      # trade performance stats
+```
+
+**Run locally (user's terminal) for execution:**
+```bash
+python -m agent.executor positions
 python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
 python -m agent.executor open --symbol ETHUSDT --side SELL --size 20 --tp 1.2 --sl 0.7
 python -m agent.executor close --symbol BTCUSDT
