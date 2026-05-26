@@ -24,6 +24,11 @@ chmod 600 "$SA_KEY_FILE"
 echo "✓ GCP SA key ready"
 export GOOGLE_APPLICATION_CREDENTIALS="$SA_KEY_FILE"
 
+# ── 1b. Install Python dependencies FIRST — must precede all google.auth usage ─
+# Pin cryptography <42 to avoid RSA CRT-param validation regression (affects GCP SA keys)
+pip install -q "cryptography>=36,<42" -r "$REPO/agent/requirements.txt" 2>&1 | tail -1
+echo "✓ dependencies ready"
+
 # ── 2. Trading mode banner ────────────────────────────────────────────────────
 TRADING_MODE="${TRADING_MODE:-testnet}"
 export TRADING_MODE
@@ -85,11 +90,7 @@ CLOUD_SESSION="true"
 } > "$ENV_FILE"
 echo "✓ agent/.env written"
 
-# ── 5. Install dependencies ───────────────────────────────────────────────────
-pip install -q -r "$REPO/agent/requirements.txt" 2>&1 | tail -1
-echo "✓ dependencies ready"
-
-# ── 6. Notify Telegram that session is live ───────────────────────────────────
+# ── 5. Notify Telegram that session is live ──────────────────────────────────
 BOT_STATUS=$(curl -sf "$CLOUD_RUN_URL/health" 2>/dev/null || echo '{"status":"unreachable"}')
 POSITIONS=$(python3 -c "
 import os, sys
