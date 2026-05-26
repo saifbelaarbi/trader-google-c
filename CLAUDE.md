@@ -45,15 +45,17 @@ TRADING_MODE : TESTNET
 CLOUD SESSION: yes — analysis + reporting only
 ```
 
-**`CLOUD SESSION: yes` means you are running in the Anthropic cloud environment.**
-Bybit's API is blocked here (TLS proxy). In this mode: read Firestore, run reports, analyze
-signals, and recommend trades — but do NOT run `python -m agent.executor`.
-Tell the user to start a **local Claude Code session** for execution, or give them the exact
-command to paste in their terminal.
+**Session modes:**
 
-**If `CLOUD SESSION` is not set or is `false`** — you are running locally with full network
-access. Analyze AND execute: run `python -m agent.report`, make the decision, then run
-`python -m agent.executor` directly. No need to ask the user to run commands themselves.
+**Local session** (`CLOUD SESSION` not set) — **this is the main trading session.**
+Full capabilities: report, analyze, execute trades, close positions, run analytics, everything.
+This is where all active trading happens. Run `python -m agent.report` then proceed with the
+full workflow below.
+
+**Cloud session** (`CLOUD SESSION: yes`) — **status/monitoring only (user is away).**
+Bybit is blocked in the Anthropic cloud environment. Only do: positions check, indicator
+report, signal summary. Do NOT attempt `python -m agent.executor`. Tell the user the
+current state and what action to take when they get back to their local session.
 
 **Only ask the user for help if the banner shows:**
 - `GCP CREDS : MISSING` → ask user to set `GCP_SA_KEY_B64` env var
@@ -145,21 +147,21 @@ Symbols:        BTCUSDT (primary), ETHUSDT, SOLUSDT
 
 ---
 
-## Quick commands
-
-**Analysis (works in both cloud and local sessions):**
+## Quick commands (local session — full capabilities)
 ```bash
 python -m agent.report                    # full state: positions + 8h indicators
 python -m agent.report BTCUSDT           # single symbol
 python -m agent.analytics --days 30      # trade performance stats
-```
-
-**Execution (local session only — Bybit blocked in cloud):**
-```bash
 python -m agent.executor positions
 python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
 python -m agent.executor open --symbol ETHUSDT --side SELL --size 20 --tp 1.2 --sl 0.7
 python -m agent.executor close --symbol BTCUSDT
+```
+
+## Cloud session commands (status check only — Bybit blocked)
+```bash
+python -m agent.report                    # positions + indicators
+python -m agent.analytics --days 7       # recent performance
 ```
 
 ---
