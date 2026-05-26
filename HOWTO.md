@@ -67,17 +67,62 @@ The auto-execute thread in Cloud Run exists but is OFF by default. Only enable i
 
 ## Starting a Claude Code session
 
-Session setup runs automatically (`.claude/setup-session.sh`):
-1. Loads SA key from `sa-key.json` → `/tmp/gcp-sa-key.json`
-2. Writes `agent/.env` with all credentials
-3. Installs Python dependencies
-4. Sends Telegram ping: "Claude trading session started"
+### Two modes — know which you're in
 
-**Default credentials (testnet):**
+| Mode | Who does it | Bybit access | Purpose |
+|------|-------------|--------------|---------|
+| **Cloud (Claude Code web)** | Claude | ❌ blocked (Anthropic TLS proxy) | Firestore reads, signal analysis, recommendations |
+| **Local CLI** | You | ✅ full | Trade execution, account balance, positions |
+
+Bybit's testnet API is reachable from your machine but the Anthropic cloud environment
+intercepts HTTPS with a TLS inspection CA that pybit's `requests` doesn't trust.
+Don't fight it — Claude analyzes, you execute.
+
+---
+
+### Cloud session startup (Claude Code web)
+
+`.claude/setup-session.sh` is supposed to auto-run but **the SA key is not committed to the
+repo** (correctly — it's a secret). So the script fails silently and credentials are missing.
+
+**Manual steps each cloud session:**
+
+1. Upload `sa-key.json` via the Claude Code paperclip / file upload
+2. Tell Claude:
+   ```
+   Use this SA key, check Firestore and run a report
+   ```
+   Claude will set `GOOGLE_APPLICATION_CREDENTIALS` and pull Bybit keys from Secret Manager
+   (they're readable with the SA). It won't be able to hit Bybit directly.
+3. Claude reads Firestore → produces full signal report
+4. You execute any trades from your local terminal (see Local CLI below)
+
+**What works in cloud:**
+- `python -m agent.report` — full indicator table + signal scores
+- All Firestore reads (alerts, positions, trade_log)
+- Signal analysis and trade recommendations
+
+**What does NOT work in cloud:**
+- `python -m agent.executor open/close` — Bybit SSL blocked, use local CLI
+
+---
+
+### Local CLI startup
+
+```bash
+# From your machine (repo root)
+source agent/.env          # or export creds manually
+
+python -m agent.report     # verify Firestore + Bybit both connect
+python -m agent.executor positions   # confirm open positions
 ```
-BYBIT_API_KEY     = x28DIhmPtaPyoNhGG1
-BYBIT_API_SECRET  = 0HLHaLi5Axnlsvr3eAae8S7LWb4UAKGL9h3z
-TRADING_MODE      = testnet
+
+`agent/.env` should contain:
+```
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
+export BYBIT_API_KEY=x28DIhmPtaPyoNhGG1
+export BYBIT_API_SECRET=0HLHaLi5Axnlsvr3eAae8S7LWb4UAKGL9h3z
+export TRADING_MODE=testnet
 ```
 
 After session starts, run:
@@ -285,3 +330,7 @@ Only when testnet is profitable for 14+ days.
 | Telegram "notification failed (network restricted)" | Expected in Claude Code container. Cloud Run sends Telegram fine. |
 | `CERTIFICATE_VERIFY_FAILED` on Firestore | gRPC is blocked. `agent/state.py` uses REST API — should not happen. |
 | Bybit order rejected | Check qty precision. BTC needs 3dp, ETH 2dp, SOL 1dp. See TODO M5. |
+| **Cloud session: `GCP_SA_KEY_B64` / `BYBIT_API_KEY` missing** | SA key is not in the repo. Upload `sa-key.json` manually each cloud session. Claude then pulls Bybit keys from Secret Manager using the SA. |
+| **Cloud session: `ModuleNotFoundError: No module named '_cffi_backend'`** | System `cryptography` package is broken. Fix: `pip install cryptography --ignore-installed -q` |
+| **Cloud session: `CERTIFICATE_VERIFY_FAILED` on Bybit** | Anthropic cloud uses TLS inspection. pybit's `requests` doesn't trust the Anthropic CA. Not fixable without code change. Use local CLI for all Bybit calls. |
+| **Cloud session: `setup-session.sh` ran but env still empty** | Script looks for `sa-key.json` in repo root which isn't there. Upload the key file manually and set `GOOGLE_APPLICATION_CREDENTIALS` explicitly. |
