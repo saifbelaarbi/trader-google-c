@@ -101,10 +101,11 @@ def cmd_open(args) -> None:
         trail_active = round(price * (1 - tp_pct * 1.5 / 100), 2)
     trail_distance = round(price * trail_pct / 100, 2)
 
-    print(f"Placing {side} {symbol} | size=${size_usdt} qty={qty} price≈{price} "
+    print(f"Placing {side} {symbol} | size=${size_usdt} qty≈{qty} price≈{price} "
           f"tp1={tp1_price} tp2={tp2_price} sl={sl_price} trail={trail_distance}@{trail_active}")
 
     order = broker.place_market_order(symbol, side, qty)
+    qty = order["qty"]  # use broker-rounded qty for position record and TP/SL sizing
     pos_data = {
         "symbol": symbol, "side": side, "entry_price": price,
         "qty": qty, "tp": tp1_price, "tp2": tp2_price, "sl": sl_price,

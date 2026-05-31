@@ -77,26 +77,26 @@ def evaluate(
 
     # ── Bullish signals (each +1, max 8) ──────────────────────────────────────
     bull = [
-        trend_15m is True,                  # 1. EMA20 above EMA50 on 15m
-        trend_1h is True,                   # 2. EMA20 above EMA50 on 1h
-        50 < rsi < 72,                      # 3. RSI positive zone, not overbought
-        macd > 0 and macd_accel,            # 4. MACD positive AND accelerating
-        vol > 1.2,                          # 5. Above-average volume
-        ema20_sloping_up is True,           # 6. EMA20 sloping upward
-        stoch_rsi > 20 and stoch_up,        # 7. StochRSI rising from low zone
-        trending,                           # 8. ADX > 25 confirms trend strength
+        trend_15m is True,                           # 1. EMA20 above EMA50 on 15m
+        trend_1h is True,                            # 2. EMA20 above EMA50 on 1h
+        50 < rsi < 72,                               # 3. RSI positive zone, not overbought
+        macd > 0 and macd_accel,                     # 4. MACD positive AND accelerating
+        vol > 1.2,                                   # 5. Above-average volume
+        ema20_sloping_up is True,                    # 6. EMA20 sloping upward
+        stoch_rsi > 20 and stoch_up,                 # 7. StochRSI rising from low zone
+        trending and trend_15m is True,              # 8. ADX > 25 confirming a bull trend
     ]
 
     # ── Bearish signals (each +1, max 8) ──────────────────────────────────────
     bear = [
-        trend_15m is False,                 # 1. EMA20 below EMA50 on 15m
-        trend_1h is False,                  # 2. EMA20 below EMA50 on 1h
-        28 < rsi < 50,                      # 3. RSI negative zone, not oversold
-        macd < 0 and macd_decel,            # 4. MACD negative AND worsening
-        vol > 1.2,                          # 5. Above-average volume
-        ema20_sloping_down is True,         # 6. EMA20 sloping downward
-        stoch_rsi < 80 and stoch_down,      # 7. StochRSI falling from high zone
-        trending,                           # 8. ADX > 25 confirms trend strength
+        trend_15m is False,                          # 1. EMA20 below EMA50 on 15m
+        trend_1h is False,                           # 2. EMA20 below EMA50 on 1h
+        28 < rsi < 50,                               # 3. RSI negative zone, not oversold
+        macd < 0 and macd_decel,                     # 4. MACD negative AND worsening
+        vol > 1.2,                                   # 5. Above-average volume
+        ema20_sloping_down is True,                  # 6. EMA20 sloping downward
+        stoch_rsi < 80 and stoch_down,               # 7. StochRSI falling from high zone
+        trending and trend_15m is False,             # 8. ADX > 25 confirming a bear trend
     ]
 
     bull_count = sum(bull)
@@ -108,9 +108,9 @@ def evaluate(
     # ── ATR-based TP/SL ───────────────────────────────────────────────────────
     sl_pct    = round((atr / price) * 100, 2) if price > 0 and atr > 0 else 0.5
     sl_pct    = max(sl_pct, 0.1)
-    tp1_pct   = round(sl_pct * 1.0, 2)   # M6: partial close at 1×ATR
-    tp2_pct   = round(sl_pct * 2.0, 2)   # M6: final target at 2×ATR
-    tp_pct    = round(sl_pct * 1.5, 2)   # legacy display field
+    tp1_pct   = round(sl_pct * 1.5, 2)   # M6: partial close at 1.5×ATR (min 1.5 R:R)
+    tp2_pct   = round(sl_pct * 3.0, 2)   # M6: final target at 3×ATR (let winners run)
+    tp_pct    = tp1_pct                   # legacy display field
     trail_pct = round(sl_pct * 0.5, 2)   # M7: trailing distance (0.5×ATR)
 
     # ── Dynamic position sizing — scales with signal confidence ───────────────
