@@ -1,6 +1,11 @@
 # Trading Bot — Improvement Roadmap
 
-**Last updated:** 2026-05-24 (session 3)
+> **⚠️ SUPERSEDED for strategy work:** the system is migrating to a Freqtrade
+> backbone for backtesting + paper trading on the user's PC. See
+> **`OVERHAUL_PLAN.md`** and **`ftbot/SETUP.md`**. Items below remain valid for
+> the legacy GCP stack until Phase 5 cleanup.
+
+**Last updated:** 2026-06-11 (overhaul session)
 **Current state:** Cloud Run relay live · Bybit testnet connected · Telegram working · Claude is the trading brain
 **Broker:** Bybit USDT perpetuals (testnet). Supports longs + shorts + native TP/SL.
 
