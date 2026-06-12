@@ -2,11 +2,10 @@
     "bot_name": "claude-consensus-paper",
     "dry_run": true,
     "dry_run_wallet": 200,
-    "max_open_trades": 2,
+    "max_open_trades": 4,
     "stake_currency": "USDT",
     "stake_amount": "unlimited",
     "tradable_balance_ratio": 0.99,
-    "timeframe": "15m",
     "trading_mode": "futures",
     "margin_mode": "isolated",
     "cancel_open_orders_on_exit": false,
@@ -19,7 +18,13 @@
         "pair_whitelist": [
             "BTC/USDT:USDT",
             "ETH/USDT:USDT",
-            "SOL/USDT:USDT"
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "BNB/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "ADA/USDT:USDT",
+            "LINK/USDT:USDT",
+            "AVAX/USDT:USDT"
         ],
         "pair_blacklist": []
     },
