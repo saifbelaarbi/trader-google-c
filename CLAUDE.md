@@ -1,174 +1,89 @@
-# Claude Code — Trading Agent Instructions
+# Claude Code — Trading System Instructions
 
-You are the trading brain for this system. You read live indicator data from Firestore,
-analyze it with your market knowledge, and execute trades on Bybit testnet via the executor.
-The Cloud Run relay and Telegram bot handle notifications — you handle decisions.
+**Architecture changed 2026-06-12** (see `OVERHAUL_PLAN.md` for the full campaign log).
+Freqtrade is now the trading engine; Claude is the research and operations layer.
+The old "Claude is the trading brain / execute via agent.executor" workflow is RETIRED.
 
 ---
+
+## Current state (as of 2026-06-12)
+
+- **Phase 3 — paper trading in progress.** `ClaudeBreakout` (4h Donchian breakout,
+  9 USDT-perp pairs, max 4 positions, $200 dry-run wallet) runs 24/7 in Freqtrade
+  dry-run mode **on the user's PC**, with its own Telegram bot for monitoring.
+- Started: 2026-06-12. Gates before real money: ≥4 weeks AND ≥30 closed trades,
+  PF ≥ 1.3 or backtest-consistent behavior, max drawdown ≤ ~26%.
+- Backtest reference (2024-06 → 2026-06): +40.9%, PF 1.15, win rate 30.8%,
+  max DD 25.9%, ~0.8 trades/day. Losing streaks of 20+ are within norms.
+- Strategy choice was pre-registered (default params; all 4 parameter neighbors
+  also profitable, PF 1.13–1.31). Do NOT switch to an in-sample-best variant.
+
+## Division of labor
+
+| Layer | Owner |
+|---|---|
+| Per-candle decisions, execution, stops/exits | Freqtrade `ClaudeBreakout` on the PC |
+| Phone monitoring, kill switch | Freqtrade Telegram bot (`/status /profit /stats /pause /forceexit`) |
+| Strategy R&D: backtests, analysis, iteration | Claude Code sessions (this repo) |
+| Legacy signal pings + Firestore journal | Old GCP stack (unchanged, to be retired in Phase 5) |
+
+## What Claude sessions do now
+
+1. **Weekly review** (primary ritual): user pastes `/profit`, `/stats`,
+   `/performance` output or the sqlite trade log
+   (`ftbot/tradesv3.dryrun.sqlite`). Compare against the backtest profile above:
+   win rate ~30%, winners avg ~+5% over ~6 days via Donchian exit, losers
+   ~-4% (stop/trail). Flag divergence; do not propose parameter tweaks
+   mid-test — that invalidates the experiment.
+2. **Incident response**: freqtrade errors/tracebacks, Telegram issues,
+   restart problems. The bot is started via `ftbot/start-bot.bat`
+   (pulls main, preserves local config secrets, launches).
+3. **Research for AFTER the test**: hyperopt prep (slow-parameter gradient
+   looked promising: 30/15 windows, EMA250), longer-history validation,
+   universe expansion. Backtests run on the user's PC — this cloud
+   environment cannot reach exchange APIs or run freqtrade.
+4. **Cloud sessions** (`CLOUD SESSION: yes` in banner): analysis/planning only.
+   Bybit and market-data APIs are blocked here.
+
+## Key commands (user's PC, repo root)
+
+```powershell
+ftbot\start-bot.bat                  # pull main + start paper bot (one click)
+freqtrade backtesting --userdir ftbot --config ftbot/config.dry.json --strategy ClaudeBreakout --timerange 20240601- --breakdown month
+freqtrade download-data --userdir ftbot --config ftbot/config.dry.json --timeframes 4h --timerange 20240101-
+```
+
+`ftbot/config.dry.json` in the working tree contains local secrets (Telegram
+token, jwt) — never commit the user's filled-in values; repo keeps placeholders.
+
+## Strategy files (ftbot/strategies/)
+
+- `ClaudeBreakout.py` — ACTIVE. V4 Donchian 20/10 + EMA200 filter + breakout
+  radar (Telegram push each 4h candle: per-pair bias + distance to trigger).
+- `breakout_variants.py` — parameter neighbors for robustness checks.
+- `ClaudeConsensus.py`, `ClaudePullback.py`, `ClaudeTrend1h.py` — V1–V3,
+  kept as the rejected-premise record (all backtest-negative; see
+  OVERHAUL_PLAN.md results log). Do not trade them.
 
 ## ⛔ ABSOLUTE RULE — NO CODE CHANGES WITHOUT EXPLICIT PERMISSION
 
 **You must NEVER edit files, write code, create branches, or open PRs unless the user
 explicitly says at the start of the session: "we are going to code" (or equivalent).**
 
-Default session mode is **trading only**: read state, analyze, recommend, execute trades.
-Do not improve, refactor, fix, or touch the codebase unless coding is explicitly authorized.
-If you notice a bug or improvement, note it in chat — do not act on it.
+Default session mode is **analysis only**: review bot performance, analyze results,
+answer questions. Do not improve, refactor, fix, or touch the codebase unless coding
+is explicitly authorized. If you notice a bug or improvement, note it in chat —
+do not act on it.
 
 This rule exists because autonomous code changes caused unintended PRs and branch pollution.
 
----
+Additionally, even when coding is authorized: never change `ClaudeBreakout`
+parameters or trading logic during the paper-trading window without explicit
+user sign-off, and keep the go-live gates intact — they are the profit plan.
 
-## System architecture
+## Legacy GCP stack (Phase 5: retire after live is stable)
 
-| Component | Role |
-|-----------|------|
-| **TradingView** | Sends bar-close alerts (15m + 1h) via webhook |
-| **Cloud Run** (`tradingbot-grpyjoqoaq-ew.a.run.app`) | Always-on relay: stores alerts in Firestore, sends Telegram signal pings |
-| **Firestore** (`tradingbot-496815`) | Single source of truth: alerts, positions, trade_log |
-| **Telegram** (`saif_trader_bot`) | Notifies user of trades, signals, errors. User commands: `/status /positions /close /pause /resume` |
-| **Claude Code (you)** | Reads Firestore → analyzes → decides → executes. You are the only brain. No static auto-trading. |
-| **Bybit testnet** | Execution venue. USDT perps, supports shorts + native TP/SL. Budget: $200 testnet |
-
----
-
-## STEP 0 — SESSION START
-
-Check the setup banner at the top of the session. It runs automatically.
-
-**If you see this — proceed immediately to `python -m agent.report`. No questions needed.**
-```
-GCP CREDS    : present
-BYBIT KEYS   : present (testnet)
-CLOUD RUN    : https://...
-TRADING_MODE : TESTNET
-CLOUD SESSION: yes — analysis + reporting only
-```
-
-**Session modes:**
-
-**Local session** (`CLOUD SESSION` not set) — **this is the main trading session.**
-Full capabilities: report, analyze, execute trades, close positions, run analytics, everything.
-This is where all active trading happens. Run `python -m agent.report` then proceed with the
-full workflow below.
-
-**Cloud session** (`CLOUD SESSION: yes`) — **status/monitoring only (user is away).**
-Bybit is blocked in the Anthropic cloud environment. Only do: positions check, indicator
-report, signal summary. Do NOT attempt `python -m agent.executor`. Tell the user the
-current state and what action to take when they get back to their local session.
-
-**Only ask the user for help if the banner shows:**
-- `GCP CREDS : MISSING` → ask user to set `GCP_SA_KEY_B64` env var
-- `BYBIT KEYS : MISSING` → ask user to set `BYBIT_API_KEY` + `BYBIT_API_SECRET`
-
-**`CLOUD RUN : NOT FOUND` or any Cloud Run URL issue is NOT a problem** — you never call
-the Cloud Run URL yourself. It's only used by TradingView webhooks. Ignore it entirely.
-
-**Never ask for credentials or trading mode if the banner shows them as present.**
-The mode is shown in the banner (🟡 TESTNET / 🔴 LIVE) — no confirmation needed.
-
-If LIVE mode: prefix every trade recommendation with `⚠️ LIVE TRADE` and apply stricter risk limits.
-
----
-
-## Session workflow
-
-After credentials and mode confirmed:
-
-### 1. Read current state
-```bash
-python -m agent.report
-```
-Shows: open positions, last 8h of indicators (15m + 1h), signal score per symbol.
-
-### 2. Analyze
-- **Trend**: EMA20 vs EMA50 on both 15m and 1h — must agree
-- **Momentum**: RSI zone (bull: 50–72, bear: 28–50)
-- **Acceleration**: MACD histogram positive AND growing vs previous bar
-- **Volume**: vol_ratio > 1.3 = high conviction, < 0.8 = ignore signal
-- **EMA slope**: EMA20 trending direction over last 3 bars
-- **Confluence**: require ≥ 4/6 indicators agreeing before recommending
-
-### 3. Recommend
-- Explain your reasoning per symbol
-- No-signal → always say WAIT (safe default)
-- Never trade against a strong trend unless reversal signals are overwhelming
-
-### 4. Confirm with user then execute
-```bash
-python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
-python -m agent.executor close --symbol ETHUSDT
-python -m agent.executor positions
-```
-
-### 5. Telegram will notify the user automatically after execution.
-
----
-
-## Risk rules
-
-| Rule | TESTNET | LIVE |
-|------|---------|------|
-| Max size per trade | $40 | $25 |
-| Preferred size | $20–30 | $15–20 |
-| Min signal confidence | 4/6 | 5/6 |
-| Max stop-loss | 3% | 2% |
-| Min TP/SL ratio | 1.5 | 1.8 |
-| RSI overbought (no longs) | 75 | 70 |
-| RSI oversold (no shorts) | 25 | 30 |
-| Max concurrent positions | 2 | 2 |
-
----
-
-## What the Telegram bot does (NOT you)
-
-The bot (`saif_trader_bot`) handles:
-- Signal ping when Cloud Run detects ≥4/6 indicators aligning (no trade, just alert to open Claude)
-- Trade confirmations after Claude executes
-- `/status`, `/positions`, `/close SYMBOL`, `/pause`, `/resume`
-
-You (Claude) do NOT need to interact with Telegram directly. Just execute via `agent.executor`
-and Telegram will pick it up automatically.
-
----
-
-## Key infrastructure
-
-```
-GCP project:    tradingbot-496815
-Region:         europe-west1
-Cloud Run URL:  https://tradingbot-grpyjoqoaq-ew.a.run.app
-Firestore DB:   (default)
-SA email:       tradingbot-sa@tradingbot-496815.iam.gserviceaccount.com
-Broker:         Bybit testnet (USDT perps)
-Budget:         $200 testnet USDT
-Symbols:        BTCUSDT (primary), ETHUSDT, SOLUSDT
-```
-
----
-
-## Quick commands (local session — full capabilities)
-```bash
-python -m agent.report                    # full state: positions + 8h indicators
-python -m agent.report BTCUSDT           # single symbol
-python -m agent.analytics --days 30      # trade performance stats
-python -m agent.executor positions
-python -m agent.executor open --symbol BTCUSDT --side BUY --size 25 --tp 1.5 --sl 0.8
-python -m agent.executor open --symbol ETHUSDT --side SELL --size 20 --tp 1.2 --sl 0.7
-python -m agent.executor close --symbol BTCUSDT
-```
-
-## Cloud session commands (status check only — Bybit blocked)
-```bash
-python -m agent.report                    # positions + indicators
-python -m agent.analytics --days 7       # recent performance
-```
-
----
-
-## Current bot state (as of 2026-05-23)
-- Cloud Run deployed and healthy
-- Telegram bot live, webhook registered
-- Bybit testnet keys configured in Secret Manager
-- Auto-trade is PAUSED — Claude (you) makes all trading decisions
-- Firestore has live alert data flowing from TradingView
+Still deployed and untouched: Cloud Run relay (`tradingbot-grpyjoqoaq-ew.a.run.app`),
+Firestore journal (`tradingbot-496815`), old Telegram bot (`saif_trader_bot`,
+webhook-bound — its token must NOT be reused by freqtrade), TradingView webhooks,
+`agent/` CLI tools (`python -m agent.report` etc. still work for the old stack).
