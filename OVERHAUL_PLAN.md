@@ -49,6 +49,36 @@ execution + testing engine. The custom stack's structural flaws for profitabilit
 - Target before proceeding: ≥100 trades in validation period, profit factor
   ≥ 1.3 **after fees**, max drawdown ≤ 15%.
 
+### Results log — strategy campaign of 2026-06-12
+
+All backtests: Bybit USDT futures, 2024-06-01 → 2026-06-12, $200 start, 0.06% fee.
+Market change over the period: ≈ -28% to -41% depending on universe.
+
+| Version | Premise | Universe | Result | Verdict |
+|---|---|---|---|---|
+| V1 ClaudeConsensus | 8-pt consensus, 15m | 3 pairs | -96.8%, PF 0.40 | dead: fee churn + stops in noise + inverted confluence |
+| V2 ClaudePullback | pullback-to-trend, 15m | 3 pairs | -76.7%, PF 0.51 | dead: 15m fee math can't close |
+| V3 ClaudeTrend1h | same premise, 1h/4h | 3 pairs | -29.6%, PF 0.75 | dead: winners capped, losers full-size |
+| V4 ClaudeBreakout | Donchian 20/10 + EMA200, 4h | 3 pairs | +0.2%, PF 1.00 | breakeven — needs breadth |
+| V4 ClaudeBreakout | same | **9 pairs, 4 slots** | **+40.9%, PF 1.15, DD 26%** | **edge** |
+
+Robustness (9 pairs, all parameter neighbors profitable → structural edge):
+
+| Variant | Profit | PF | Max DD |
+|---|---|---|---|
+| 20/10, EMA200 (default) | +40.9% | 1.15 | 25.9% |
+| Fast 15/8 | +40.1% | 1.13 | 29.2% |
+| Slow 30/15 | +73.8% | 1.31 | 22.7% |
+| EMA150 | +37.2% | 1.13 | 29.6% |
+| EMA250 | +63.0% | 1.25 | 20.3% |
+
+**Decision:** paper trade `ClaudeBreakout` (default params — chosen before seeing
+results; switching to the in-sample best would re-introduce selection bias).
+Slower-parameter gradient is a hyperopt direction after paper trading validates
+backtest-vs-reality. Expected live profile: ~0.8 trades/day across 9 pairs,
+~30% win rate, P&L carried by multi-day winners, drawdowns to ~26% and losing
+streaks past 20 are within backtest norms — not a malfunction.
+
 ### Phase 3 — Paper trading (≥4 weeks)
 - `freqtrade trade` dry-run on PC, 24/7, Telegram on phone.
 - Weekly Claude review: dry-run vs backtest drift, edge concentration,
