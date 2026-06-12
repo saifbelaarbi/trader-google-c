@@ -48,6 +48,7 @@ class ClaudeBreakout(IStrategy):
 
     entry_window = 20  # ~3.3 days of 4h candles
     exit_window = 10
+    trend_ema = 200
 
     max_stake_usdt = 40.0
     wallet_fraction = 0.20
@@ -73,7 +74,7 @@ class ClaudeBreakout(IStrategy):
         ]
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
-        dataframe["ema200"] = ta.EMA(dataframe, timeperiod=200)
+        dataframe["ema200"] = ta.EMA(dataframe, timeperiod=self.trend_ema)
         dataframe["atr"] = ta.ATR(dataframe, timeperiod=14)
         dataframe["atr_pct"] = dataframe["atr"] / dataframe["close"]
         # Donchian channels, shifted so the current candle can break them.
