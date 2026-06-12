@@ -26,6 +26,7 @@ from datetime import datetime
 from typing import Optional
 
 import talib.abstract as ta
+from freqtrade.exchange import timeframe_to_prev_date
 from freqtrade.persistence import Trade
 from freqtrade.strategy import IStrategy, stoploss_from_open
 from pandas import DataFrame
@@ -52,6 +53,44 @@ class ClaudeBreakout(IStrategy):
 
     max_stake_usdt = 40.0
     wallet_fraction = 0.20
+
+    # Telegram "breakout radar": once per candle, per-pair bias + distance
+    # to the Donchian trigger. Live/dry-run only; set False to silence.
+    radar_enabled = True
+
+    def bot_loop_start(self, current_time: datetime, **kwargs) -> None:
+        if not self.radar_enabled or self.dp.runmode.value not in ("live", "dry_run"):
+            return
+        candle = timeframe_to_prev_date(self.timeframe, current_time)
+        if getattr(self, "_last_radar_candle", None) == candle:
+            return
+        lines = []
+        for pair in self.dp.current_whitelist():
+            dataframe, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
+            if dataframe is None or dataframe.empty:
+                continue
+            last = dataframe.iloc[-1]
+            cols = ["close", "ema200", "dc_entry_high", "dc_entry_low"]
+            if last[cols].isna().any():
+                continue
+            coin = pair.split("/")[0]
+            if last["close"] > last["ema200"]:
+                dist = (last["dc_entry_high"] / last["close"] - 1) * 100
+                text = f"{coin}: ⬆ long bias — {dist:+.1f}% to {self.entry_window}-bar high"
+            else:
+                dist = (1 - last["dc_entry_low"] / last["close"]) * 100
+                text = f"{coin}: ⬇ short bias — {dist:+.1f}% to {self.entry_window}-bar low"
+            lines.append((dist, text))
+        if not lines:
+            return  # dataframes not analyzed yet — retry next loop
+        self._last_radar_candle = candle
+        lines.sort(key=lambda item: item[0])
+        slots = Trade.get_open_trade_count()
+        self.dp.send_msg(
+            f"📡 Breakout radar — {candle:%d %b %H:%M} UTC "
+            f"(slots {slots}/{self.config.get('max_open_trades', '?')})\n"
+            + "\n".join(text for _, text in lines)
+        )
 
     @property
     def protections(self):
