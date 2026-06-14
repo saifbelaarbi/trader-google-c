@@ -22,6 +22,7 @@ multi-ATR winners carry the book. Judge on profit factor + expectancy,
 not win rate.
 """
 
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -30,6 +31,8 @@ from freqtrade.exchange import timeframe_to_prev_date
 from freqtrade.persistence import Trade
 from freqtrade.strategy import IStrategy, stoploss_from_open
 from pandas import DataFrame
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeBreakout(IStrategy):
@@ -59,11 +62,49 @@ class ClaudeBreakout(IStrategy):
     radar_enabled = True
 
     def bot_loop_start(self, current_time: datetime, **kwargs) -> None:
+        # Notification only — wrapped so a radar failure can NEVER disrupt the
+        # trading loop or spam tracebacks (an earlier version did the latter).
         if not self.radar_enabled or self.dp.runmode.value not in ("live", "dry_run"):
             return
         candle = timeframe_to_prev_date(self.timeframe, current_time)
         if getattr(self, "_last_radar_candle", None) == candle:
             return
+        try:
+            msg = self._build_radar(candle)
+        except Exception as exc:
+            self._last_radar_candle = candle  # don't retry-spam on hard failure
+            logger.warning("Breakout radar skipped this candle: %s", exc)
+            return
+        if msg is None:
+            return  # dataframes not analyzed yet — retry next loop
+        self._last_radar_candle = candle
+        self.dp.send_msg(msg)
+
+    def _open_trades_count(self):
+        try:
+            return len(Trade.get_open_trades())
+        except Exception:
+            return "?"
+
+    def _open_trade_lines(self) -> list[str]:
+        out = []
+        try:
+            trades = Trade.get_open_trades()
+        except Exception:
+            return out
+        for t in trades:
+            try:
+                df, _ = self.dp.get_analyzed_dataframe(t.pair, self.timeframe)
+                rate = float(df.iloc[-1]["close"]) if df is not None and not df.empty \
+                    else float(t.open_rate)
+                profit = t.calc_profit_ratio(rate) * 100
+                direction = "short" if t.is_short else "long"
+                out.append(f"{t.pair.split('/')[0]} {direction} {profit:+.1f}%")
+            except Exception:
+                continue
+        return out
+
+    def _build_radar(self, candle) -> Optional[str]:
         lines = []
         for pair in self.dp.current_whitelist():
             dataframe, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
@@ -76,21 +117,25 @@ class ClaudeBreakout(IStrategy):
             coin = pair.split("/")[0]
             if last["close"] > last["ema200"]:
                 dist = (last["dc_entry_high"] / last["close"] - 1) * 100
-                text = f"{coin}: ⬆ long bias — {dist:+.1f}% to {self.entry_window}-bar high"
+                text = f"{coin}: ⬆ long — {dist:+.1f}% to {self.entry_window}-bar high"
             else:
                 dist = (1 - last["dc_entry_low"] / last["close"]) * 100
-                text = f"{coin}: ⬇ short bias — {dist:+.1f}% to {self.entry_window}-bar low"
+                text = f"{coin}: ⬇ short — {dist:+.1f}% to {self.entry_window}-bar low"
             lines.append((dist, text))
         if not lines:
-            return  # dataframes not analyzed yet — retry next loop
-        self._last_radar_candle = candle
+            return None  # dataframes not analyzed yet
         lines.sort(key=lambda item: item[0])
-        slots = Trade.get_open_trade_count()
-        self.dp.send_msg(
+        max_trades = self.config.get("max_open_trades", "?")
+        header = (
             f"📡 Breakout radar — {candle:%d %b %H:%M} UTC "
-            f"(slots {slots}/{self.config.get('max_open_trades', '?')})\n"
-            + "\n".join(text for _, text in lines)
+            f"(slots {self._open_trades_count()}/{max_trades})"
         )
+        parts = [header]
+        open_lines = self._open_trade_lines()
+        if open_lines:
+            parts.append("Open positions:\n" + "\n".join(open_lines))
+        parts.append("Watching (closest first):\n" + "\n".join(t for _, t in lines))
+        return "\n".join(parts)
 
     @property
     def protections(self):
