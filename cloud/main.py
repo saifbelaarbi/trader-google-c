@@ -609,3 +609,56 @@ def health():
         "min_signals": AUTO_TRADE_MIN_SIGNALS,
         "role": "auto-executor",
     }), 200
+
+
+# ── Freqtrade telemetry bridge ────────────────────────────────────────────────
+# The paper-trading Freqtrade bot (ClaudeBreakout, on the user's PC) POSTs its
+# events here via its native webhook. We persist them to Firestore so a cloud
+# Claude session can read live bot state without reaching the PC. This does not
+# touch trading logic — it is observation only.
+
+@app.route("/ft-event", methods=["POST"])
+def ft_event():
+    incoming = request.headers.get("X-Webhook-Secret") or request.args.get("secret", "")
+    if not WEBHOOK_SECRET:
+        return jsonify({"error": "server misconfiguration"}), 401
+    if not hmac.compare_digest(incoming, WEBHOOK_SECRET):
+        logger.warning("Unauthorized ft-event from %s", request.remote_addr)
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        payload = json.loads(request.get_data(as_text=True))
+    except json.JSONDecodeError as exc:
+        return jsonify({"error": f"invalid JSON: {exc}"}), 400
+
+    from google.cloud import firestore as fs
+    payload["received_at"] = fs.SERVER_TIMESTAMP
+    db = _get_db()
+    db.collection("ft_events").add(payload)
+    # Keep a single rolling "latest" doc so reads are one fetch.
+    db.collection("ft_status").document("latest").set(payload, merge=True)
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/ft-status", methods=["GET"])
+def ft_status():
+    """Latest Freqtrade snapshot + recent events, for cloud Claude sessions."""
+    try:
+        db = _get_db()
+        latest_doc = db.collection("ft_status").document("latest").get()
+        latest = latest_doc.to_dict() if latest_doc.exists else None
+        events = [
+            d.to_dict()
+            for d in db.collection("ft_events")
+            .order_by("received_at", direction="DESCENDING")
+            .limit(20)
+            .stream()
+        ]
+        return jsonify({
+            "latest": latest,
+            "recent_events": events,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }), 200
+    except Exception:
+        logger.error("Error in /ft-status:\n%s", traceback.format_exc())
+        return jsonify({"error": "internal error"}), 500
+
