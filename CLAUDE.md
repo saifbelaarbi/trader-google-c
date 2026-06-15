@@ -48,7 +48,8 @@ The old "Claude is the trading brain / execute via agent.executor" workflow is R
 ## Key commands (user's PC, repo root)
 
 ```powershell
-ftbot\start-bot.bat                  # pull main + start paper bot (one click)
+ftbot\start-bot.bat                  # pull main + start paper bot (one click, one-shot)
+ftbot\watch-bot.bat                  # same, but auto-redeploys on each main push touching ftbot/ (dry-run only)
 freqtrade backtesting --userdir ftbot --config ftbot/config.dry.json --strategy ClaudeBreakout --timerange 20240601- --breakdown month
 freqtrade download-data --userdir ftbot --config ftbot/config.dry.json --timeframes 4h --timerange 20240101-
 ```
