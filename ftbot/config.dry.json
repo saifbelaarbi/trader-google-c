@@ -79,10 +79,10 @@
         "username": "trader",
         "password": "REPLACE_WITH_PASSWORD"
     },
-    "_comment_webhook": "Telemetry bridge: posts events to the Cloud Run relay -> Firestore so a cloud Claude session can read live bot state. Set enabled:true, fill url with your relay /ft-event, and X-Webhook-Secret with the relay WEBHOOK_SECRET. Observation only — does not affect trading.",
+    "_comment_webhook": "Telemetry bridge: posts events to the Cloud Run relay -> Firestore so a cloud Claude session can read live bot state. URL is pre-filled with the deployed relay host. To turn on: set enabled:true and put the relay's WEBHOOK_SECRET (same one the old TradingView webhook used) in X-Webhook-Secret. Observation only — does not affect trading.",
     "webhook": {
         "enabled": false,
-        "url": "https://REPLACE_WITH_RELAY_HOST/ft-event",
+        "url": "https://tradingbot-grpyjoqoaq-ew.a.run.app/ft-event",
         "format": "json",
         "webhook_headers": {
             "X-Webhook-Secret": "REPLACE_WITH_RELAY_WEBHOOK_SECRET"
