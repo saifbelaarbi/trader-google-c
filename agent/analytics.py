@@ -19,25 +19,13 @@ if env_file.exists():
     except ImportError:
         pass
 
-import requests as _requests
-
 from agent import state
 
 
 def _fetch_trades(days: int) -> list[dict]:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    resp = _requests.get(
-        f"{state._BASE}/trade_log",
-        headers=state._headers(),
-        timeout=20,
-    )
-    resp.raise_for_status()
     trades = []
-    for doc in resp.json().get("documents", []):
-        fields = state._dec_fields(doc.get("fields", {}))
-        ts = str(fields.get("timestamp", ""))
-        if ts < cutoff:
-            continue
+    for fields in state.get_trade_log(cutoff_iso=cutoff):
         event = str(fields.get("event", ""))
         if "opened" in event:
             continue
@@ -48,7 +36,7 @@ def _fetch_trades(days: int) -> list[dict]:
             "symbol": str(fields.get("symbol", "?")),
             "pnl": float(pnl),
             "event": event,
-            "timestamp": ts,
+            "timestamp": str(fields.get("timestamp", "")),
         })
     return sorted(trades, key=lambda x: x["timestamp"])
 

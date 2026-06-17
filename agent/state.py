@@ -23,7 +23,8 @@ def _headers() -> dict:
         _creds, _ = google.auth.default(
             scopes=["https://www.googleapis.com/auth/datastore"]
         )
-    _creds.refresh(google.auth.transport.requests.Request())
+    if not _creds.valid:
+        _creds.refresh(google.auth.transport.requests.Request())
     return {"Authorization": f"Bearer {_creds.token}", "Content-Type": "application/json"}
 
 
@@ -202,14 +203,35 @@ def log_decision(symbol: str, decision: dict) -> None:
     _add_doc("decisions", entry)
 
 
+def get_trade_log(cutoff_iso: str | None = None) -> list[dict]:
+    """Return all trade_log documents, paginating through Firestore's 300-doc pages.
+
+    cutoff_iso: if given, skip documents whose timestamp < cutoff_iso.
+    """
+    docs = []
+    page_token = None
+    while True:
+        params = {"pageToken": page_token} if page_token else {}
+        resp = requests.get(f"{_BASE}/trade_log", headers=_headers(),
+                            params=params, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        for doc in data.get("documents", []):
+            fields = _dec_fields(doc.get("fields", {}))
+            if cutoff_iso and str(fields.get("timestamp", "")) < cutoff_iso:
+                continue
+            docs.append(fields)
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+    return docs
+
+
 def get_today_pnl() -> float:
     """Sum of realized PnL logged today (UTC) from trade_log."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    resp = requests.get(f"{_BASE}/trade_log", headers=_headers(), timeout=15)
-    resp.raise_for_status()
     total = 0.0
-    for doc in resp.json().get("documents", []):
-        fields = _dec_fields(doc.get("fields", {}))
+    for fields in get_trade_log(cutoff_iso=today):
         ts = str(fields.get("timestamp", ""))
         if ts.startswith(today) and fields.get("pnl") is not None:
             total += float(fields["pnl"])

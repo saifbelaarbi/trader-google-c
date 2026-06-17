@@ -90,7 +90,9 @@ def webhook():
         logger.info("Alert stored: %s %s price=%.2f", symbol, timeframe, alert["price"] or 0)
 
         # Kick off auto-trade evaluation in background — webhook returns immediately
-        if timeframe == "15" and _auto_trade_active:
+        with _auto_trade_lock:
+            should_trade = _auto_trade_active
+        if timeframe == "15" and should_trade:
             t = threading.Thread(target=_evaluate_and_trade, args=(symbol,), daemon=True)
             t.start()
 
@@ -243,7 +245,7 @@ def _evaluate_and_trade(symbol: str) -> None:
             return
 
         size_usdt = float(decision["size_usdt"])
-        qty = round(size_usdt / price, 3)
+        qty = size_usdt / price  # raw qty — broker will round to correct step
         if qty == 0:
             return
 
@@ -260,6 +262,7 @@ def _evaluate_and_trade(symbol: str) -> None:
         trail_distance = round(price * trail_pct / 100, 2)
 
         order = broker.place_market_order(symbol, side, qty)
+        qty = order["qty"]  # use broker-rounded qty for position record and TP/SL sizing
         pos_data = {
             "symbol": symbol, "side": side, "entry_price": price,
             "qty": qty, "tp": tp1_price, "tp2": tp2_price, "sl": sl_price,
@@ -485,21 +488,12 @@ def daily_summary():
         from cloud import telegram
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        resp = __import__("requests").get(
-            "https://firestore.googleapis.com/v1/projects/tradingbot-496815"
-            "/databases/(default)/documents/trade_log",
-            headers=s._headers(), timeout=15,
-        )
-        resp.raise_for_status()
-
         trades, wins, losses, total_pnl = 0, 0, 0, 0.0
-        for doc in resp.json().get("documents", []):
-            fields = s._dec_fields(doc.get("fields", {}))
+        for fields in s.get_trade_log(cutoff_iso=today):
             ts = str(fields.get("timestamp", ""))
             if not ts.startswith(today):
                 continue
-            event = fields.get("event", "")
-            if "opened" in event:
+            if "opened" in str(fields.get("event", "")):
                 continue
             trades += 1
             pnl = float(fields.get("pnl") or 0)
@@ -537,24 +531,13 @@ def pnl_stats():
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         from agent import state as s
-        resp = __import__("requests").get(
-            "https://firestore.googleapis.com/v1/projects/tradingbot-496815"
-            "/databases/(default)/documents/trade_log",
-            headers=s._headers(), timeout=20,
-        )
-        resp.raise_for_status()
 
         trades, wins, losses, total_pnl = 0, 0, 0, 0.0
         win_pnl, loss_pnl = 0.0, 0.0
         by_symbol: dict = {}
 
-        for doc in resp.json().get("documents", []):
-            fields = s._dec_fields(doc.get("fields", {}))
-            ts = str(fields.get("timestamp", ""))
-            if ts < cutoff:
-                continue
-            event = fields.get("event", "")
-            if "opened" in event:
+        for fields in s.get_trade_log(cutoff_iso=cutoff):
+            if "opened" in str(fields.get("event", "")):
                 continue
             pnl = fields.get("pnl")
             if pnl is None:
