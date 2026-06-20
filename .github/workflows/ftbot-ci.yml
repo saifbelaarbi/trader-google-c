@@ -1,0 +1,40 @@
+name: ftbot CI
+
+# Lightweight CI for the freqtrade research workstream (ftbot/). Runs on the
+# fqtrader feature branches and on any PR that touches ftbot/ or the research
+# tests. Intentionally does NOT install freqtrade or the TA-Lib C library:
+# strategy files are only byte-compiled (syntax check), and the unit tests cover
+# the pure-Python sizing helpers, which carry the actual returns-optimization math.
+
+on:
+  push:
+    branches:
+      - 'claude/fqtrader-**'
+  pull_request:
+    paths:
+      - 'ftbot/**'
+      - 'tests/test_research_sizing.py'
+      - 'tests/conftest.py'
+      - '.github/workflows/ftbot-ci.yml'
+
+jobs:
+  strategy-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight tooling
+        run: pip install ruff==0.4.4 pytest==8.2.0
+
+      - name: Lint research helpers + tests
+        run: ruff check ftbot/strategies/research_sizing.py tests/
+
+      - name: Byte-compile all strategy files (syntax check, no imports)
+        run: python -m py_compile ftbot/strategies/*.py
+
+      - name: Unit-test research sizing helpers
+        run: pytest tests/test_research_sizing.py -v
