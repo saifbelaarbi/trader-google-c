@@ -425,6 +425,25 @@ freqtrade hyperopt --userdir ftbot --config ftbot/config.dry.json `
 validation period after funding+slippage** without breaking the DD gate. Adopt regions,
 not points. One change per backtest so attribution is clean.
 
+### Implementation map (backtest-only code)
+
+The levers above are implemented as **backtest-only** code so they can be measured
+without touching the live `ClaudeBreakout` paper bot:
+
+- `ftbot/strategies/research_sizing.py` — pure, dependency-free math
+  (`risk_based_stake`, `pyramid_should_add`, `crowding_factor`, `chandelier_stop`),
+  unit-tested in CI (`tests/test_research_sizing.py`) without freqtrade/TA-Lib.
+- `ftbot/strategies/breakout_research.py` — `ClaudeBreakout` subclasses wiring those
+  helpers into freqtrade callbacks:
+  `ClaudeBreakoutRisk` (sizing), `ClaudeBreakoutCorr` (+crowding),
+  `ClaudeBreakoutPyramid` (+pyramiding), `ClaudeBreakoutChandelier` (+chandelier exit),
+  `ClaudeBreakoutPro` (all). Each isolates one lever for clean A/B attribution.
+- `.github/workflows/ftbot-ci.yml` — lints the helpers, byte-compiles the strategies,
+  runs the unit tests on every fqtrader branch / ftbot PR.
+
+These ship the *mechanism*; the numbers (Calmar, DD, net-of-funding PF) still come from
+running the backtests on the PC per the plan above.
+
 ---
 
 ## 13. Summary
