@@ -1,0 +1,78 @@
+---
+title: "Run on your PC"
+description: "Install freqtrade and start the ClaudeBreakout dry-run bot."
+icon: "desktop"
+---
+
+<Warning>
+  The live bot runs **`ClaudeBreakout`**. Do not change its parameters or logic during the
+  paper-trading window — that invalidates the experiment. All tuning happens on the
+  [research variants](/research/variants) in backtests.
+</Warning>
+
+## 1. Install freqtrade
+
+<Tabs>
+  <Tab title="Docker (recommended)">
+    ```bash
+    docker pull freqtradeorg/freqtrade:stable
+    ```
+    Prefix every `freqtrade …` command with (from the repo root):
+    ```bash
+    docker run --rm -v "$PWD/ftbot:/freqtrade/user_data" freqtradeorg/freqtrade:stable
+    ```
+    With Docker, paths become `/freqtrade/user_data/…` and `--userdir /freqtrade/user_data`.
+  </Tab>
+  <Tab title="pip (Python 3.11+)">
+    ```bash
+    python -m venv ~/ft-env
+    source ~/ft-env/bin/activate     # Windows: ~\ft-env\Scripts\activate
+    pip install freqtrade
+    freqtrade --version
+    ```
+  </Tab>
+</Tabs>
+
+## 2. Configure secrets
+
+The repo ships `ftbot/config.dry.json` with placeholders. Fill these in **locally** and
+**never commit** the real values:
+
+- `telegram.token` — a **new** bot token from [@BotFather](https://t.me/BotFather). Do
+  **not** reuse `saif_trader_bot` (the Cloud Run relay holds a webhook on it; Telegram
+  allows one consumer per token).
+- `telegram.chat_id` — your chat id.
+- `telegram.enabled` — `true`.
+- `api_server.jwt_secret_key`, `ws_token`, `password` — random strings.
+
+## 3. Download history (for backtests)
+
+The live bot needs no data, but backtests/hyperopt do. The strategy is 4h:
+
+```bash
+freqtrade download-data --userdir ftbot --config ftbot/config.dry.json \
+  --timeframes 4h --timerange 20210101-
+```
+
+## 4. Start the bot
+
+<CodeGroup>
+```powershell Batch scripts
+ftbot\start-bot.bat     :: pull main, preserve local secrets, start dry-run
+ftbot\watch-bot.bat     :: same, plus auto-redeploy on main changes (dry-run only)
+```
+
+```bash Direct
+freqtrade trade --userdir ftbot --config ftbot/config.dry.json --strategy ClaudeBreakout
+```
+</CodeGroup>
+
+Keep it running 24/7 (Docker `--restart unless-stopped`, or `tmux`/`systemd` for pip).
+Optional dashboard: `freqtrade install-ui`, then [http://127.0.0.1:8080](http://127.0.0.1:8080).
+
+<Check>
+  Within one 4h candle you should get a **breakout-radar** Telegram push: per-pair bias and
+  distance to the next Donchian trigger, plus open positions.
+</Check>
+
+Next: [monitor from your phone](/run/monitoring), or [move it to a cloud VM](/run/gcp).

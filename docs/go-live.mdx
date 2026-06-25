@@ -1,0 +1,65 @@
+---
+title: "Going live"
+description: "The hard gates and safety rules before any real money moves."
+icon: "flag-checkered"
+---
+
+No architecture makes a strategy profitable — it only makes profitability *measurable*. The
+gates exist because the fastest way to lose the eventual real bankroll is to skip them.
+
+## Go-live gates
+
+All must pass before switching to real money:
+
+<Steps>
+  <Step title="Enough evidence" icon="calendar-check">
+    ≥ 4 weeks of dry-run **and** ≥ 30 closed trades.
+  </Step>
+  <Step title="Profitable and consistent" icon="chart-line">
+    Dry-run profit factor ≥ **1.3**, win rate within ~10 points of backtest.
+  </Step>
+  <Step title="Survivable drawdown" icon="shield-halved">
+    Max dry-run drawdown ≤ **15%** of wallet.
+  </Step>
+  <Step title="No unexplained divergence" icon="magnifying-glass">
+    Backtest and dry-run behavior line up. Any gap is understood, not hand-waved.
+  </Step>
+</Steps>
+
+## First live steps (when the gates pass)
+
+<Warning>
+  Start small and de-risked. This is the most dangerous moment in the whole plan.
+</Warning>
+
+- Live Bybit keys; start with **$50–100**, not the full intended capital.
+- **Halve** position sizes for the first 2 weeks.
+- **Tighten** the `MaxDrawdown` protection.
+- Test **one** manual trade before enabling autonomous entries.
+- Watch the first 5 live trades closely via Telegram.
+- Secure keys via [Secret Manager](/run/gcp), enable Bybit IP allow-listing, disable
+  withdrawals.
+
+## Standing safety rules
+
+<AccordionGroup>
+  <Accordion title="Never edit the live strategy mid-window" icon="lock">
+    Changing `ClaudeBreakout` parameters or logic during the paper test invalidates the
+    experiment. Tuning happens on [research variants](/research/variants) in backtests.
+  </Accordion>
+  <Accordion title="Never commit filled-in secrets" icon="key">
+    `config.dry.json` keeps placeholders in the repo; your Telegram token, jwt, and password
+    stay local (or in Secret Manager).
+  </Accordion>
+  <Accordion title="One Telegram consumer per token" icon="paper-plane">
+    Run the bot in exactly one place. Two instances on the same token cause update conflicts.
+  </Accordion>
+  <Accordion title="Dry-run flatters" icon="triangle-exclamation">
+    Real fills slip, funding drags, fees bite. The realism pass and the gates are precisely
+    why backtest optimism doesn't become real losses.
+  </Accordion>
+  <Accordion title="One tweak per week" icon="hand">
+    No constant fiddling. Surviving losing streaks is the precondition for collecting on
+    winning ones.
+  </Accordion>
+</AccordionGroup>

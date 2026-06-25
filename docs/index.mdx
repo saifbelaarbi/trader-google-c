@@ -1,0 +1,63 @@
+---
+title: "Fqtrader"
+description: "A freqtrade-based crypto trading system: research, operations, and cloud deployment for the ClaudeBreakout strategy."
+icon: "house"
+---
+
+**Fqtrader** is the trading system in the [`ftbot/`](https://github.com/saifbelaarbi/trader-google-c) directory.
+[Freqtrade](https://www.freqtrade.io) is the execution engine; Claude is the research and
+operations layer. The active strategy, **`ClaudeBreakout`**, runs 24/7 in dry-run
+(paper) mode and is graduating to real money behind hard gates.
+
+<Note>
+  **Paper-trading in progress.** The bot trades dry-run only. No real money moves until
+  every [go-live gate](/go-live) passes. Nothing here changes the live strategy mid-test.
+</Note>
+
+## The strategy in one line
+
+A turtle-style **Donchian breakout**: enter on a 20-bar high/low break filtered by EMA200,
+exit on the opposite 10-bar extreme, hard stop at 2×ATR. 9 USDT-perp pairs, max 4 open,
+$200 dry-run wallet, 4h candles.
+
+<CardGroup cols={2}>
+  <Card title="Backtest reference" icon="chart-line">
+    2024-06 → 2026-06: **+40.9%**, profit factor **1.15**, win rate **30.8%**, max drawdown
+    **25.9%**, ~0.8 trades/day — in a market that fell ~28–41%.
+  </Card>
+  <Card title="Edge = breadth" icon="layer-group">
+    Same rules on 3 pairs break even (+0.2%); on 9 pairs they return +40.9%. P&L is carried
+    by a few multi-day winners.
+  </Card>
+</CardGroup>
+
+## Start here
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    How the pieces fit and who owns what.
+  </Card>
+  <Card title="The strategy" icon="bullseye" href="/strategy">
+    How ClaudeBreakout enters, exits, and sizes.
+  </Card>
+  <Card title="Run on your PC" icon="desktop" href="/run/pc">
+    Install freqtrade and start the dry-run bot.
+  </Card>
+  <Card title="Deploy on GCP" icon="cloud" href="/run/gcp">
+    Host the bot 24/7 on a Compute Engine VM.
+  </Card>
+  <Card title="Improve returns" icon="flask" href="/research/returns">
+    The returns-optimization research and levers.
+  </Card>
+  <Card title="Go live" icon="flag-checkered" href="/go-live">
+    The gates and safety rules before real money.
+  </Card>
+</CardGroup>
+
+## How judgments are made
+
+This is a **low-win, high-payoff** system — win rate is a red herring. Strategies are judged
+on **profit factor** and **Calmar** (return ÷ drawdown), **net of fees and funding**, never on
+win rate. A profit factor of 1.15 at a 31% win rate implies an average winner ~2.5× the
+average loser; the whole game is protecting that payoff ratio while surviving long losing
+streaks.

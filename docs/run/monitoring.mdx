@@ -1,0 +1,57 @@
+---
+title: "Monitor & review"
+description: "Telegram control from your phone and the weekly review ritual."
+icon: "paper-plane"
+---
+
+Monitoring is freqtrade's native Telegram bot — no custom code to maintain.
+
+## Telegram commands
+
+| Command | Shows |
+| --- | --- |
+| `/status` | open trades + live P&L |
+| `/profit` | cumulative profit summary |
+| `/performance` | profit by pair |
+| `/daily` · `/weekly` · `/monthly` | P&L by period |
+| `/balance` | wallet |
+| `/forceexit <id>` · `/forceexit all` | manual close (kill switch) |
+| `/stopentry` | stop new entries, keep managing open ones |
+| `/stop` · `/start` | halt / resume the bot |
+| `/count` | open vs max trades |
+
+## Weekly review ritual
+
+Once a week, paste live results into a Claude cloud session for analysis:
+
+```bash
+sqlite3 ftbot/tradesv3.dryrun.sqlite \
+  "select pair, is_short, open_date, close_date, close_profit, exit_reason \
+   from trades order by close_date desc limit 30;"
+```
+
+Or paste the output of `/profit`, `/performance`, and `/status`.
+
+## What to compare against
+
+Hold live behavior up to the backtest profile and flag divergence:
+
+<CardGroup cols={2}>
+  <Card title="Win rate ~30%" icon="percent">
+    Within ~10 points of backtest. Lower is a warning; much higher is also worth a look.
+  </Card>
+  <Card title="Winners ~+5% / ~6 days" icon="arrow-trend-up">
+    Carried by the Donchian exit on multi-day trends.
+  </Card>
+  <Card title="Losers ~-4%" icon="arrow-trend-down">
+    Stop or trail. Most trades are small losses — that's by design.
+  </Card>
+  <Card title="Drawdown ≤ ~26%" icon="wave-square">
+    Losing streaks past 20 are within norms, not a malfunction.
+  </Card>
+</CardGroup>
+
+<Warning>
+  **Do not tune mid-window.** One hypothesis tweak per week maximum, and never on the live
+  strategy during the paper test. Divergence gets noted, not fixed by fiddling.
+</Warning>
