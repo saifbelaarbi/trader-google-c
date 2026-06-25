@@ -1,0 +1,69 @@
+---
+title: "Improving returns"
+description: "The ranked levers to make the strategy gain more, faster, and smarter."
+icon: "flask"
+---
+
+The live strategy is a sound but bare turtle **skeleton** riding on breadth. The levers
+below complete it. Full rationale lives in `ftbot/RESEARCH_returns.md`.
+
+<Warning>
+  Every lever is a **backtest task first**, walk-forward validated, and promoted to the live
+  bot only after the [go-live gates](/go-live) pass. None of this touches the paper bot
+  mid-window.
+</Warning>
+
+## Ranked levers
+
+| # | Lever | Attacks | Overfit risk |
+| --- | --- | --- | --- |
+| 1 | **Risk-based unit sizing** (size ∝ 1/ATR) | return **and** drawdown | low |
+| 2 | **Pyramiding** (add to winners) | the fat tail | low–med |
+| 3 | **Funding + slippage realism** | *is the edge even real?* | none |
+| 4 | **Correlation-aware exposure** | drawdown / Sharpe | low |
+| 5 | **Breadth** (more pairs / dynamic list) | return | low–med |
+| 6 | **Chandelier exit** vs fixed Donchian | average winner | low |
+| 7 | **Walk-forward hyperopt** toward the slow region | return + DD | high |
+| 8 | **Longer history + Monte-Carlo DD** | confidence | none |
+| 9 | **Modest leverage** | return (+DD 1:1) | high |
+
+## The two that matter most
+
+<CardGroup cols={2}>
+  <Card title="Risk-based sizing" icon="scale-balanced">
+    The flat notional stake makes dollar-risk-per-trade effectively random — volatile pairs
+    silently dominate drawdowns. Sizing **inversely to ATR** equalizes risk, smooths the
+    curve, and lets you safely run more total size. Highest-impact change.
+  </Card>
+  <Card title="Pyramiding" icon="layer-group">
+    A breakout book lives on a few trades that run for weeks. Adding units every 0.5×ATR in
+    favour (stop trailing up) scales **only winners** — the honest way to gain faster.
+  </Card>
+</CardGroup>
+
+## Do this first
+
+<Note>
+  **Realism before anything else.** Dry-run and naive backtests flatter. Re-run the baseline
+  with **funding** (multi-day perp holds) and a **slippage** assumption (you enter *into*
+  momentum). A gross PF 1.15 can become net ~1.0. If the honest number is ≤ 1.0, stop and
+  rethink — don't tune a non-edge.
+</Note>
+
+## The smarter half
+
+All BTC-beta pairs co-move, so 4 simultaneous longs behave like one ~4× leveraged BTC bet —
+that's why drawdown reaches 26% on a "diversified" book. **Correlation-aware exposure** (lever
+#4) sizes against that crowding. Combined with honest backtesting (funding, longer history,
+Monte-Carlo drawdown distribution), it converts a flattering single-path result into a risk
+you can actually size against.
+
+<Warning>
+  **What not to do:** switch the live bot to the in-sample-best slow params mid-test; bolt on
+  discretionary entry filters without walk-forward proof; shorten the timeframe (15m failed
+  twice on fee math). Each is a degree of freedom that inflates the backtest and disappoints
+  live.
+</Warning>
+
+The code that implements these levers lives in the [research variants](/research/variants);
+the [backtest workflow](/research/backtesting) is how you measure them.

@@ -1,0 +1,67 @@
+---
+title: "Architecture"
+description: "How the trading system is structured and who owns each layer."
+icon: "sitemap"
+---
+
+Freqtrade is the trading engine; Claude is the research and operations layer. The older
+"Claude is the trading brain" workflow is retired.
+
+## Division of labor
+
+| Layer | Owner |
+| --- | --- |
+| Per-candle decisions, execution, stops/exits | Freqtrade `ClaudeBreakout` (on a PC or VM) |
+| Phone monitoring + kill switch | Freqtrade's native Telegram bot |
+| Strategy R&D: backtests, hyperopt, analysis | Claude Code sessions |
+| Legacy signal pings + Firestore journal | Old GCP stack (to be retired) |
+
+## Why freqtrade
+
+The custom predecessor had structural flaws for profitability, all of which freqtrade fixes
+out of the box:
+
+<AccordionGroup>
+  <Accordion title="No backtesting" icon="clock-rotate-left">
+    The old engine was never validated on history. Freqtrade ships backtesting, hyperopt,
+    and dry-run as first-class tools.
+  </Accordion>
+  <Accordion title="Trades required an open session" icon="plug">
+    No session meant no brain and missed moves. Freqtrade runs as a persistent process,
+    24/7, independent of any chat.
+  </Accordion>
+  <Accordion title="Fragile data pipeline" icon="link-slash">
+    A TradingView → Cloud Run → Firestore chain just to get OHLCV. Freqtrade pulls market
+    data directly from the exchange via ccxt.
+  </Accordion>
+  <Accordion title="Reinvented infrastructure" icon="recycle">
+    Custom Telegram, risk, and analytics code re-implemented what freqtrade ships
+    battle-tested: Telegram control, protections, FreqUI.
+  </Accordion>
+</AccordionGroup>
+
+## Where things run
+
+<CardGroup cols={2}>
+  <Card title="The bot" icon="robot">
+    Freqtrade `trade` (dry-run) on a PC ([guide](/run/pc)) or a GCP VM
+    ([guide](/run/gcp)). Holds a local SQLite trade DB.
+  </Card>
+  <Card title="Research" icon="flask">
+    Backtests and hyperopt run on the PC/VM ([workflow](/research/backtesting)). Claude
+    cloud sessions interpret results — they cannot reach the exchange.
+  </Card>
+  <Card title="Telegram" icon="paper-plane">
+    A dedicated bot for `/status`, `/profit`, `/forceexit`, etc. One consumer per token.
+  </Card>
+  <Card title="Legacy GCP stack" icon="cloud">
+    Cloud Run relay + Firestore journal + old Telegram bot, untouched until the Phase 5
+    cleanup after live is stable.
+  </Card>
+</CardGroup>
+
+<Warning>
+  **Cloud sessions are analysis-only.** Claude Code cloud sessions cannot reach Bybit or run
+  freqtrade (no exchange/market-data access, no TA-Lib). Everything that touches the market
+  runs on your PC or a VM.
+</Warning>
